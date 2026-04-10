@@ -1,1 +1,10 @@
-ECHO is on.
+fastapi
+uvicorn[standard]
+pydantic
+python-dotenv
+httpx
+beautifulsoup
+trafilatura
+duckduckgo.search
+openai
+tenacity
