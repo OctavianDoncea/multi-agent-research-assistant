@@ -1,1 +1,12 @@
-ECHO is on.
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: mara-ollama
+    ports:
+      - '11434:11434'
+    volumes:
+      - ollama:/root/.ollama
+    restart: unless-stopped
+
+volumes:
+  ollama:
