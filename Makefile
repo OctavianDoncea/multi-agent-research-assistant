@@ -7,6 +7,6 @@ backend-run:
 	cd backend && . .venv/bin/activate && uvicorn app.main:app --reload --port 8000
 
 backend-curl:
-	curl -s gttp://localhost:8000/api/research \
-		-H "Content-Type: application/json" \
-		
+	curl -s http://localhost:8000/api/research \
+	  -H "Content-Type: application/json" \
+	  -d '{"query":"What are the main causes of inflation, and what policies reduce it?"}' | python -m json.tool
