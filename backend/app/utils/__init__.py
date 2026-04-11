@@ -1,1 +1,1 @@
-ECHO is on.
+__all__ = []    
