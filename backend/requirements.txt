@@ -3,7 +3,7 @@ uvicorn[standard]
 pydantic
 python-dotenv
 httpx
-beautifulsoup
+beautifulsoup4
 trafilatura
 duckduckgo.search
 openai
