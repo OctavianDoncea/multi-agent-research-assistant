@@ -25,7 +25,7 @@ class Settings:
     search_provider: str = os.getenv('SEARCH_PROVIDER', 'duckduckgo')
     max_subquestions: int = int(os.getenv('MAX_SUBQUESTIONS', '3'))
     max_search_result: int = int(os.getenv('MAX_SEARCH_RESULTS', '6'))
-    max_pages_per_sunquestion: int = int(os.getenv('MAX_PAGES_PER_SUBQUESTION', '2'))
+    max_pages_per_subquestion: int = int(os.getenv('MAX_PAGES_PER_SUBQUESTION', '2'))
 
     # Extraction / prompt budgeting
     max_chars_per_page: int = int(os.getenv('MAX_CHARS_PER_PAGE', '8000'))
