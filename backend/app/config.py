@@ -15,7 +15,10 @@ class Settings:
     llm_fallback: str = os.getenv('LLM_FALLBACK', 'ollama')
 
     groq_api_key: str | None = os.getenv('GROQ_API_KEY')
-    groq_model: str = os.getenv('GROQ_MODEL', 'llama-3.1-8b')
+    groq_model_planner: str = os.getenv('GROQ_MODEL_PLANNER', 'openai/gpt-oss-20b')
+    groq_model_summarizer: str = os.getenv('GROQ_MODEL_SUMMARIZER', 'llama-3.1-8b-instant')
+    groq_model_factchecker: str = os.getenv('GROQ_MODEL_FACTCHECKER', 'openai/gpt-oss-20b')
+    groq_model_default: str = os.getenv('GROQ_MODEL', 'llama-3.1-8b')
 
     ollama_base_url: str = os.getenv('OLLAMA_BASE_URL', 'http://localhost:11434/v1')
     ollama_api_key: str = os.getenv('OLLAMA_API_KEY', 'ollama')
