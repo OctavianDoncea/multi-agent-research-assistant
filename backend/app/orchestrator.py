@@ -24,7 +24,7 @@ def _pack_sources_for_llm(bundles: list[ResearchBundle]) -> list[tuple[str, str,
         for s in b.sources:
             all_sources.append(s)
 
-    all.sources.sort(key=lambda s: 0 if s.extracted_text else 1)
+    all_sources.sort(key=lambda s: 0 if s.extracted_text else 1)
 
     for s in all_sources:
         if not s.extracted_text:
@@ -63,7 +63,7 @@ async def run_research_pipeline(query: str, max_subquestions: int | None = None)
         return {
             'request_id': request_id,
             'needs_clarification': True,
-            "clarifying_questions": planner_out.clarifying_question,
+            "clarifying_questions": planner_out.clarifying_questions,
             "subquestions": [],
             "summary_markdown": None,
             "sources": [],
@@ -92,7 +92,15 @@ async def run_research_pipeline(query: str, max_subquestions: int | None = None)
     api_sources: list[Source] = []
     for b in bundles:
         for s in b.sources:
-            api_sources(Source(source_id=s.source_id, url=s.url, title=s.title, snippet=s.snippet, extracted_text=s.extracted_text))
+            api_sources.append(
+                Source(
+                    source_id=s.source_id,
+                    url=s.url,
+                    title=s.title,
+                    snippet=s.snippet,
+                    extracted_text=s.extracted_text,
+                )
+            )
 
     packed_sources = _pack_sources_for_llm(bundles)
     if not packed_sources:
@@ -127,7 +135,7 @@ async def run_research_pipeline(query: str, max_subquestions: int | None = None)
             agent=f'fact_checker({fc_provider})',
             input_preview=preview(summarizer_out.answer_markdown),
             output_preview=preview(str([x.model_dump() for x in fact_out.items])),
-            duration_ms = _now_ms - t3
+            duration_ms=_now_ms() - t3
         )
     )
 

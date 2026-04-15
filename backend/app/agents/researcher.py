@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from token import OP
 from typing import Optional
 from app.config import settings
 from app.tools.search import web_search, SearchResult
@@ -17,7 +16,7 @@ class ResearchSource:
 
 @dataclass
 class ResearchBundle:
-    subquestions: str
+    subquestion: str
     sources: list[ResearchSource]
 
 async def run_researcher(subquestion: str, source_id_prefix: str) -> ResearchBundle:
@@ -43,7 +42,7 @@ async def run_researcher(subquestion: str, source_id_prefix: str) -> ResearchBun
                 break
 
         sources.append(ResearchSource(
-            source_id=id,
+            source_id=sid,
             url=r.url,
             title=clean_text(r.title or '') or None,
             snippet=clean_text(r.snippet or '') or None,

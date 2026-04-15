@@ -17,7 +17,7 @@ async def research(req: ResearchRequest):
     return ResearchResponse(
         query=req.query,
         needs_clarification=result['needs_clarification'],
-        clarifying_questions=result['clarifying_question'],
+        clarifying_questions=result['clarifying_questions'],
         subquestions=result['subquestions'],
         summary_markdown=result['summary_markdown'],
         sources=result['sources'],

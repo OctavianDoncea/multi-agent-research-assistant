@@ -1,5 +1,5 @@
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from dotenv import load_dotenv
 
 load_dotenv(dotenv_path=os.path.join(os.getcwd(), "..", ".env"))
@@ -34,6 +34,10 @@ class Settings:
     max_chars_per_page: int = int(os.getenv('MAX_CHARS_PER_PAGE', '8000'))
     max_total_source_chats: int = int(os.getenv('MAX_TOTAL_SOURCE_CHARS', '24000'))
 
-    cors_origins: list[str] = _split_csv(os.getenv('CORS_ORIGINS', 'http://localhost:5173'))
+    cors_origins: list[str] = field(
+        default_factory=lambda: _split_csv(
+            os.getenv('CORS_ORIGINS', 'http://localhost:5173')
+        )
+    )
 
 settings = Settings()

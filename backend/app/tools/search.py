@@ -2,7 +2,7 @@ import asyncio
 from dataclasses import dataclass
 from typing import List, Optional
 
-from duckduckgo_search import DDGS
+from ddgs import DDGS
 
 from app.config import settings
 from app.utils.text import clean_text
@@ -35,6 +35,7 @@ async def web_search(query: str, max_results: int | None = None) -> List[SearchR
 
     if provider != "duckduckgo":
         raise ValueError(f"Unsupported SEARCH_PROVIDER={provider} (Phase 2 implements duckduckgo).")
-    max_results = max_results or settings.max_search_results
+    configured_max = getattr(settings, "max_search_results", settings.max_search_result)
+    max_results = max_results or configured_max
     
     return await asyncio.to_thread(_ddg_search_sync, query, max_results)
