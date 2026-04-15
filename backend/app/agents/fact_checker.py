@@ -17,8 +17,8 @@ class FactCheckerOutput(BaseModel):
 FACTCHECK_SYSTEM = """You are a fact-checker agent.
 
 You receive:
-1) A drafted answer (markdown) with citations like [S1]
-2) The source excerpts keyed by source_id (S1, S2, ...)
+1) A drafted answer (markdown) with citations like [S1-1]
+2) The source excerpts keyed by source_id (S1-1, S2-1, ...)
 
 Task:
 - Extract 4-10 major factual claims from the answer.
@@ -37,8 +37,9 @@ Return ONLY valid JSON:
 }
 
 Rules:
-- If the answer makes a claim that is not clearly in the excerpts: status="uncertain" or "unsupported"
-- If sources conflict: status="uncertain" and mention conflict
+- evidence_source_ids MUST be a subset of the provided source IDs (use exact IDs like S1-1).
+- Never output evidence IDs that do not appear in the SOURCE EXCERPTS.
+- If sources conflict: status="uncertain" and mention conflict.
 - Prefer conservative labeling
 """
 
@@ -52,10 +53,27 @@ def _format_sources(sources: list[tuple[str, str, str | None]]) -> str:
     
     return '\n\n---\n\n'.join(blocks)
 
-async def run_fact_checker(answer_markdown: str, packed_sources: list[tuple[str, str, str | None]]) -> tuple[FactCheckerOutput, str]:
+async def run_fact_checker(answer_markdown: str, packed_sources: list[tuple[str, str, str | None]], *, allowed_source_ids: list[str] | None = None, repair_instructions: str | None = None) -> tuple[FactCheckerOutput, str]:
+    constraint_block = ''
+
+    if allowed_source_ids:
+        constraint_block = (
+            'IMPORTANT CONSTRAINT:\n'
+            f"- evidence_source_ids MUST be chosen only from: {', '.join(allowed_source_ids)}"
+        )
+
+    prefix = ''
+    if repair_instructions:
+        prefix = f'REPAIR TASK:\n{repair_instructions}\n\n'
+    
     messages = [
         LLMMEssage(role='system', content=FACTCHECK_SYSTEM),
-        LLMMEssage(role='user', content=f'ANSWER:\n{answer_markdown}\n\nSOURCE EXCERPTS:\n{_format_sources(packed_sources)}')
+        LLMMEssage(role='user', content=(
+            f'{prefix}',
+            f'{constraint_block}',
+            f'ANSWER:\n{answer_markdown}\n\n',
+            f'SOURCE EXCERPTS:\n{_format_sources(packed_sources)}'
+        ))
     ]
     text, provider = await llm_router.chat(messages, models={'groq': settings.groq_model_factchecker, 'ollama': settings.ollama_model}, temperature=0.1, max_tokens=1200)
     try:
