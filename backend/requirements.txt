@@ -8,3 +8,6 @@ trafilatura
 duckduckgo.search
 openai
 tenacity
+SQLAlchemy
+asyncpg
+alembic
