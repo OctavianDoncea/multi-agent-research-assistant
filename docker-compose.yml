@@ -1,4 +1,21 @@
 services:
+  db:
+    image: postgres:16
+    container_name: multi-agent_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: multi-agent
+    ports:
+      - "5432:5432"
+    volumes:
+      - multi-agent_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d multi-agent"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  
   ollama:
     image: ollama/ollama:latest
     container_name: mara-ollama
@@ -7,6 +24,8 @@ services:
     volumes:
       - ollama:/root/.ollama
     restart: unless-stopped
+    profiles: ["ollama"]
 
 volumes:
+  multi-agent_pgdata:
   ollama:
