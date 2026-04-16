@@ -1,5 +1,6 @@
 import os
 from dataclasses import dataclass, field
+from this import d
 from dotenv import load_dotenv
 
 load_dotenv(dotenv_path=os.path.join(os.getcwd(), "..", ".env"))
@@ -39,5 +40,27 @@ class Settings:
             os.getenv('CORS_ORIGINS', 'http://localhost:5173')
         )
     )
+
+    # Database config
+    db_user: str = os.getenv('POSTGRES_USER', 'postgres')
+    db_password: str = os.getenv('POSTGRES_PASSWORD', '')
+    db_name: str = os.getnev('POSTGRES_DB', 'multi-agent')
+    db_host: str = os.getenv('POSTGRES_HOST', 'localhost')
+    db_port: int = int(os.getenv('POSTGRES_PORT', '5432'))
+    database_url_override: str | None = os.getenv('DATABASE_URL')
+
+    @property
+    def database_url(self) -> str:
+        if self.database_url_override:
+            return self.database_url_override
+        if not self.db_password:
+            raise ValueError(
+                "POSTGRES_PASSWORD is not set. Put it in your .env (not committed) "
+                "or set DATABASE_URL explicitly."
+            )
+
+        return (
+            f"postgresql+asyncpg://{self.db_user}:{self.db_password}@{self.db_host}:{self.db_port}/{self.db_name}"
+        )
 
 settings = Settings()
