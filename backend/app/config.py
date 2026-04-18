@@ -1,10 +1,16 @@
 import os
 from dataclasses import dataclass, field
-from this import d
+from pathlib import Path
+from urllib.parse import quote_plus
+
 from dotenv import load_dotenv
 
-load_dotenv(dotenv_path=os.path.join(os.getcwd(), "..", ".env"))
-load_dotenv(dotenv_path=os.path.join(os.getcwd(), ".env"), override=False)
+# Resolve .env from this file's location — not os.getcwd() (breaks Alembic vs uvicorn vs tests).
+_backend_dir = Path(__file__).resolve().parent.parent
+_repo_root = _backend_dir.parent
+
+load_dotenv(_repo_root / ".env")
+load_dotenv(_backend_dir / ".env", override=True)
 
 def _split_csv(s: str) -> list[str]:
     return [x.strip() for x in s.split(',') if x.strip()]
@@ -43,8 +49,8 @@ class Settings:
 
     # Database config
     db_user: str = os.getenv('POSTGRES_USER', 'postgres')
-    db_password: str = os.getenv('POSTGRES_PASSWORD', '')
-    db_name: str = os.getnev('POSTGRES_DB', 'multi-agent')
+    db_password: str = os.getenv('POSTGRES_PASSWORD')
+    db_name: str = os.getenv('POSTGRES_DB', 'multi-agent')
     db_host: str = os.getenv('POSTGRES_HOST', 'localhost')
     db_port: int = int(os.getenv('POSTGRES_PORT', '5432'))
     database_url_override: str | None = os.getenv('DATABASE_URL')
@@ -59,8 +65,10 @@ class Settings:
                 "or set DATABASE_URL explicitly."
             )
 
+        user = quote_plus(self.db_user)
+        password = quote_plus(self.db_password)
         return (
-            f"postgresql+asyncpg://{self.db_user}:{self.db_password}@{self.db_host}:{self.db_port}/{self.db_name}"
+            f"postgresql+asyncpg://{user}:{password}@{self.db_host}:{self.db_port}/{self.db_name}"
         )
 
 settings = Settings()

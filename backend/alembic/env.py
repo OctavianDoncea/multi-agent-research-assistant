@@ -24,7 +24,8 @@ def do_run_migrations(connection: Connection):
 
 async def run_migrations_online():
     configuration = config.get_section(config.config_ini_section) or {}
-    configuration['sqlalchemy.url'] = settings.database_url.replace('+asyncpg', '')
+    # Must keep +asyncpg: async_engine_from_config requires an async driver.
+    configuration["sqlalchemy.url"] = settings.database_url
     connectable = async_engine_from_config(configuration, prefix='sqlalchemy.', poolclass=pool.NullPool)
 
     async with connectable.connect() as connection:
@@ -32,7 +33,7 @@ async def run_migrations_online():
 
     await connectable.dispose()
 
-if context.context.is_offline_mode():
+if context.is_offline_mode():
     run_migrations_offline()
 else:
     import asyncio
