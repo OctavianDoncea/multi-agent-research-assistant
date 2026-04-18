@@ -2,24 +2,44 @@ import time
 import uuid
 import re
 from typing import Any
+
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.config import settings
 from app.schemas import AgentStepDebug, Source, ClaimCheck
 from app.utils.text import preview, truncate
 from app.utils.tokens import estimate_tokens
+
 from app.agents.planner import run_planner
 from app.agents.researcher import run_researcher, ResearchBundle
 from app.agents.summarizer import run_summarizer
 from app.agents.fact_checker import run_fact_checker
+
 from app.db import crud
+
 
 def _now_ms() -> int:
     return int(time.time() * 1000)
-    
+
+
 _BRACKET_RE = re.compile(r"\[([^\]]+)\]")
 _SOURCE_ID_RE = re.compile(r"\bS\d+(?:-\d+)*\b")
 
+
+def extract_citation_ids(markdown: str) -> set[str]:
+    ids: set[str] = set()
+    if not markdown:
+        return ids
+    for content in _BRACKET_RE.findall(markdown):
+        for sid in _SOURCE_ID_RE.findall(content):
+            ids.add(sid)
+    return ids
+
+
 def _pack_sources_for_llm(bundles: list[ResearchBundle]) -> list[tuple[str, str, str | None]]:
+    """
+    Returns list of (source_id, url, extracted_text) clipped to MAX_TOTAL_SOURCE_CHARS.
+    """
     packed: list[tuple[str, str, str | None]] = []
     total_chars = 0
 
@@ -33,132 +53,143 @@ def _pack_sources_for_llm(bundles: list[ResearchBundle]) -> list[tuple[str, str,
     for s in all_sources:
         if not s.extracted_text:
             continue
-        
-        remaining = settings.max_total_source_chats - total_chars
-
+        remaining = settings.max_total_source_chars - total_chars
         if remaining <= 0:
             break
-
         clipped = truncate(s.extracted_text, min(len(s.extracted_text), remaining))
         packed.append((s.source_id, s.url, clipped))
         total_chars += len(clipped)
 
     return packed
 
-def extract_citation_ids(markdown: str) -> set[str]:
-    ids: set[str] = set()
 
-    if not markdown:
-        return ids
-
-    for content in _BRACKET_RE.findall(markdown):
-        for sid in _SOURCE_ID_RE.findall(content):
-            ids.add(sid)
-
-    return ids
-
-async def _persist_step(db: AsyncSession | None, session_id: uuid.UUID | None, *, agent_name: str, input_obj: dict | None, output_obj: dict | None, duration_ms: int):
-    """Stores an agent step to the DB if db+session_id are provided"""
+async def _persist_step(
+    db: AsyncSession | None,
+    session_id: uuid.UUID | None,
+    *,
+    agent_name: str,
+    input_obj: dict | None,
+    output_obj: dict | None,
+    duration_ms: int,
+) -> None:
     if not db or not session_id:
         return
-    
-    tokens_used: int | None = None
+    # token count is optional; store an estimate for interviewer-friendly telemetry
+    tokens_used = None
     try:
-        tokens_used = estimate_tokens(str(output_obj or '')) if output_obj is not None else None
+        tokens_used = estimate_tokens(str(output_obj or "")) if output_obj is not None else None
     except Exception:
         tokens_used = None
 
-    await crud.add_agent_stop(db, session_id=session_id, agent_name=agent_name, input=input_obj, output=output_obj, tokens_used=tokens_used, duration_ms=duration_ms)
+    await crud.add_agent_step(
+        db,
+        session_id=session_id,
+        agent_name=agent_name,
+        input=input_obj,
+        output=output_obj,
+        tokens_used=tokens_used,
+        duration_ms=duration_ms,
+    )
 
-async def run_research_pipeline(query: str, max_subquestions: int | None = None, *, db: AsyncSession | None = None, session_id: uuid.UUID | None = None) -> dict[str, Any]:
+
+async def run_research_pipeline(
+    query: str,
+    max_subquestions: int | None = None,
+    *,
+    db: AsyncSession | None = None,
+    session_id: uuid.UUID | None = None,
+) -> dict[str, Any]:
     request_id = str(uuid.uuid4())
     debug_steps: list[AgentStepDebug] = []
+
     max_subq = max_subquestions or settings.max_subquestions
 
     try:
         # 1) Planner
         t0 = _now_ms()
         planner_out, planner_provider = await run_planner(query, max_subquestions=max_subq)
+        d0 = _now_ms() - t0
+
         debug_steps.append(
             AgentStepDebug(
-                agent=f'planner({planner_provider})',
+                agent=f"planner({planner_provider})",
                 input_preview=preview(query),
                 output_preview=preview(str(planner_out.model_dump())),
-                duration_ms=_now_ms() - t0
+                duration_ms=d0,
             )
         )
-
         await _persist_step(
             db,
             session_id,
-            agent_name=f'planner({planner_provider})',
-            input_obj={'query': query, 'max_subquestions': max_subq},
+            agent_name=f"planner({planner_provider})",
+            input_obj={"query": query, "max_subquestions": max_subq},
             output_obj=planner_out.model_dump(),
-            duration_ms=_now_ms() - t0
+            duration_ms=d0,
         )
 
         if planner_out.needs_clarification:
             if db and session_id:
                 await crud.mark_session_completed(db, session_id)
             return {
-                'request_id': request_id,
-                'needs_clarification': True,
+                "request_id": request_id,
+                "needs_clarification": True,
                 "clarifying_questions": planner_out.clarifying_questions,
                 "subquestions": [],
                 "summary_markdown": None,
                 "sources": [],
                 "fact_checks": [],
-                "debug_steps": debug_steps
+                "debug_steps": debug_steps,
             }
 
         subquestions = planner_out.subquestions[:max_subq]
 
-        # 2) Researcher (for each subquestion)
+        # 2) Researcher
         bundles: list[ResearchBundle] = []
         t1 = _now_ms()
         for i, sq in enumerate(subquestions):
-            bundle = await run_researcher(sq, source_id_prefix=f'S{i+1}-')
+            bundle = await run_researcher(sq, source_id_prefix=f"S{i+1}-")
             bundles.append(bundle)
+        d1 = _now_ms() - t1
 
         debug_steps.append(
             AgentStepDebug(
-                agent='researcher(search+extract)',
+                agent="researcher(search+extract)",
                 input_preview=preview(str(subquestions)),
-                output_preview=preview(f'bundles={len(bundles)}'),
-                duration_ms=_now_ms() - t1
+                output_preview=preview(f"bundles={len(bundles)}"),
+                duration_ms=d1,
             )
         )
 
         researcher_output = {
-            'subquestion': b.subquestion,
-            'bundles': [
+            "subquestions": subquestions,
+            "bundles": [
                 {
-                    'subquestion': b.subquestion,
-                    'sources': [
+                    "subquestion": b.subquestion,
+                    "sources": [
                         {
-                            'source_id': s.source_id,
-                            'url': s.url,
-                            'title': s.title,
-                            'snippet': s.snippet,
-                            'has_extracted_text': bool(s.extracted_text),
-                            'extracted_len': len(s.extracted_text or '')
+                            "source_id": s.source_id,
+                            "url": s.url,
+                            "title": s.title,
+                            "snippet": s.snippet,
+                            "has_extracted_text": bool(s.extracted_text),
+                            "extracted_len": len(s.extracted_text or ""),
                         }
                         for s in b.sources
-                    ]
+                    ],
                 }
                 for b in bundles
-            ]
+            ],
         }
-
         await _persist_step(
             db,
             session_id,
-            agent_name='researcher(search+extract)',
-            input_obj={'subquestions': subquestions},
+            agent_name="researcher(search+extract)",
+            input_obj={"subquestions": subquestions},
             output_obj=researcher_output,
-            duration_ms=_now_ms() - t1
+            duration_ms=d1,
         )
 
+        # Flatten sources for API response
         api_sources: list[Source] = []
         for b in bundles:
             for s in b.sources:
@@ -172,81 +203,71 @@ async def run_research_pipeline(query: str, max_subquestions: int | None = None,
                     )
                 )
 
+        # Persist sources (store excerpt to keep DB reasonable)
         if db and session_id:
             await crud.replace_sources(
                 db,
                 session_id,
                 sources=[
                     {
-                        'source_id': s.source_id,
-                        'url': s.url,
-                        'title': s.title,
-                        'snippet': s.snippet,
-                        'content_excerpt': truncate(s.extracted_text, 8000) if s.extracted_text else None
+                        "source_id": s.source_id,
+                        "url": s.url,
+                        "title": s.title,
+                        "snippet": s.snippet,
+                        "content_excerpt": truncate(s.extracted_text, 8000) if s.extracted_text else None,
                     }
                     for s in api_sources
-                ]
+                ],
             )
 
+        # If no extracted content, return graceful message
         packed_sources = _pack_sources_for_llm(bundles)
         if not packed_sources:
             if db and session_id:
                 await crud.mark_session_completed(db, session_id)
             return {
-                'request_id': request_id,
-                'needs_clarification': False,
-                'clarifying_questions': [],
-                'subquestions': subquestions,
-                'summary_markdown': 'No readable source content could be extracted from the top search results. Try a different query or more specific keywords',
-                'sources': api_sources,
-                'fact_checks': [],
-                'debug_steps': debug_steps
+                "request_id": request_id,
+                "needs_clarification": False,
+                "clarifying_questions": [],
+                "subquestions": subquestions,
+                "summary_markdown": "No readable source content could be extracted from the top search results. Try a different query or more specific keywords.",
+                "sources": api_sources,
+                "fact_checks": [],
+                "debug_steps": debug_steps,
             }
 
         allowed_ids = sorted({sid for (sid, _url, text) in packed_sources if text})
         allowed_set = set(allowed_ids)
 
         # 3) Summarizer
-        allowed_ids = sorted({sid for (sid, _url, text) in packed_sources if text})
         t2 = _now_ms()
-        try:
-            summarizer_out, sum_provider = await run_summarizer(
-                query,
-                packed_sources,
-                allowed_source_ids=allowed_ids,
-            )
-        except Exception as e:
-            summarizer_out = type("FallbackSummary", (), {"answer_markdown": "Summary unavailable: LLM provider error. Please retry."})()
-            sum_provider = "unavailable"
-            debug_steps.append(
-                AgentStepDebug(
-                    agent="summarizer(error)",
-                    input_preview=preview(query),
-                    output_preview=preview(str(e)),
-                    duration_ms=_now_ms() - t2,
-                )
-            )
+        summarizer_out, sum_provider = await run_summarizer(
+            query,
+            packed_sources,
+            allowed_source_ids=allowed_ids,
+        )
+        d2 = _now_ms() - t2
+
         debug_steps.append(
             AgentStepDebug(
-                agent=f'summarizer({sum_provider})',
-                input_preview=preview(f'sources_chars={sum(len(t or '') for _, _, t in packed_sources)}'),
+                agent=f"summarizer({sum_provider})",
+                input_preview=preview(f"sources_chars={sum(len(t or '') for _,_,t in packed_sources)}"),
                 output_preview=preview(summarizer_out.answer_markdown),
-                duration_ms=_now_ms() - t2
+                duration_ms=d2,
             )
         )
-
         await _persist_step(
             db,
             session_id,
-            agent_name=f'summarizer({sum_provider})',
-            input_obj={'query': query, 'allowed_source_ids': allowed_ids},
+            agent_name=f"summarizer({sum_provider})",
+            input_obj={"query": query, "allowed_source_ids": allowed_ids},
             output_obj=summarizer_out.model_dump(),
-            duration_ms=_now_ms() - t2
+            duration_ms=d2,
         )
 
-        # Qualty guard: citation validation + one repair retry: 
-        cited_ids = extract_citation_ids(summarizer_out.answer_markdown or '')
-        invalid_citations = sorted([cid for cid in cited_ids if cid not in set(allowed_ids)])
+        # Quality guard: citations
+        cited_ids = extract_citation_ids(summarizer_out.answer_markdown or "")
+        invalid_citations = sorted([cid for cid in cited_ids if cid not in allowed_set])
 
         if (not cited_ids) or invalid_citations:
             t2b = _now_ms()
@@ -257,85 +278,56 @@ async def run_research_pipeline(query: str, max_subquestions: int | None = None,
                 "Rewrite the answer_markdown to include citations using ONLY allowed IDs (e.g., [S1-1]). "
                 "Do not use [S1] or any IDs not in the allowed list. Ensure the main claims are cited."
             )
-            try:
-                summarizer_out, sum_provider2 = await run_summarizer(
-                    query,
-                    packed_sources,
-                    allowed_source_ids=allowed_ids,
-                    repair_instructions=repair_msg,
-                )
-                debug_steps.append(
-                    AgentStepDebug(
-                        agent=f"summarizer_repair({sum_provider2})",
-                        input_preview=preview(repair_msg),
-                        output_preview=preview(summarizer_out.answer_markdown),
-                        duration_ms=_now_ms() - t2b
-                    )
-                )
-                await _persist_step(
-                    db,
-                    session_id,
-                    agent_name=f'summarizer_repair({sum_provider2})',
-                    input_obj={'repair_instructions': repair_msg, 'allowed_sources_ids': allowed_ids},
-                    output_obj=summarizer_out.model_dump(),
-                    duration_ms=_now_ms() - t2b
-                )
-            except Exception as e:
-                debug_steps.append(
-                    AgentStepDebug(
-                        agent="summarizer_repair(error)",
-                        input_preview=preview(repair_msg),
-                        output_preview=preview(str(e)),
-                        duration_ms=_now_ms() - t2b,
-                    )
-                )
-
-        # 4) Fact-checker
-        t3 = _now_ms()
-        try:
-            fact_out, fc_provider = await run_fact_checker(
-                summarizer_out.answer_markdown,
+            summarizer_out, sum_provider2 = await run_summarizer(
+                query,
                 packed_sources,
                 allowed_source_ids=allowed_ids,
+                repair_instructions=repair_msg,
             )
+            d2b = _now_ms() - t2b
             debug_steps.append(
                 AgentStepDebug(
-                    agent=f'fact_checker({fc_provider})',
-                    input_preview=preview(summarizer_out.answer_markdown),
-                    output_preview=preview(str([x.model_dump() for x in fact_out.items])),
-                    duration_ms=_now_ms() - t3
+                    agent=f"summarizer_repair({sum_provider2})",
+                    input_preview=preview(repair_msg),
+                    output_preview=preview(summarizer_out.answer_markdown),
+                    duration_ms=d2b,
                 )
             )
             await _persist_step(
                 db,
                 session_id,
-                agent_name=f'fact_checker({fc_provider})',
-                input_obj={'allowed_source_ids': allowed_ids},
-                output_obj={'items': [i.model_dump() for i in fact_out.items]},
-                duration_ms=_now_ms() - t3
+                agent_name=f"summarizer_repair({sum_provider2})",
+                input_obj={"repair_instructions": repair_msg, "allowed_source_ids": allowed_ids},
+                output_obj=summarizer_out.model_dump(),
+                duration_ms=d2b,
             )
-        except Exception as e:
-            fact_out = type("FallbackFacts", (), {"items": []})()
-            fc_provider = "unavailable"
-            debug_steps.append(
-                AgentStepDebug(
-                    agent="fact_checker(error)",
-                    input_preview=preview(summarizer_out.answer_markdown),
-                    output_preview=preview(str(e)),
-                    duration_ms=_now_ms() - t3,
-                )
-            )
+
+        # 4) Fact-checker
+        t3 = _now_ms()
+        fact_out, fc_provider = await run_fact_checker(
+            summarizer_out.answer_markdown,
+            packed_sources,
+            allowed_source_ids=allowed_ids,
+        )
+        d3 = _now_ms() - t3
+
         debug_steps.append(
             AgentStepDebug(
-                agent=f'fact_checker({fc_provider})',
+                agent=f"fact_checker({fc_provider})",
                 input_preview=preview(summarizer_out.answer_markdown),
                 output_preview=preview(str([x.model_dump() for x in fact_out.items])),
-                duration_ms=_now_ms() - t3
+                duration_ms=d3,
             )
         )
+        await _persist_step(
+            db,
+            session_id,
+            agent_name=f"fact_checker({fc_provider})",
+            input_obj={"allowed_source_ids": allowed_ids},
+            output_obj={"items": [i.model_dump() for i in fact_out.items]},
+            duration_ms=d3,
+        )
 
-        # Quality guard: fact-check evidence IDs validation + one repair entry
-        allowed_set = set(allowed_ids)
         invalid_evidence_ids = sorted(
             {
                 eid
@@ -353,69 +345,68 @@ async def run_research_pipeline(query: str, max_subquestions: int | None = None,
                 f"- Allowed IDs are: {allowed_ids}\n\n"
                 "Recompute the fact-check items. evidence_source_ids must contain ONLY allowed IDs."
             )
-            try:
-                fact_out, fc_provider2 = await run_fact_checker(
-                    summarizer_out.answer_markdown,
-                    packed_sources,
-                    allowed_source_ids=allowed_ids,
-                    repair_instructions=repair_msg,
+            fact_out, fc_provider2 = await run_fact_checker(
+                summarizer_out.answer_markdown,
+                packed_sources,
+                allowed_source_ids=allowed_ids,
+                repair_instructions=repair_msg,
+            )
+            d3b = _now_ms() - t3b
+            debug_steps.append(
+                AgentStepDebug(
+                    agent=f"fact_checker_repair({fc_provider2})",
+                    input_preview=preview(repair_msg),
+                    output_preview=preview(str([x.model_dump() for x in fact_out.items])),
+                    duration_ms=d3b,
                 )
-                debug_steps.append(
-                    AgentStepDebug(
-                        agent=f"fact_checker_repair({fc_provider2})",
-                        input_preview=preview(repair_msg),
-                        output_preview=preview(str([x.model_dump() for x in fact_out.items])),
-                        duration_ms=_now_ms() - t3b,
-                    )
-                )
-                await _persist_step(
-                    db,
-                    session_id,
-                    agent_name=f"fact_checker_repair({fc_provider2})",
-                    input_obj={"repair_instructions": repair_msg, "allowed_source_ids": allowed_ids},
-                    output_obj={"items": [i.model_dump() for i in fact_out.items]},
-                    duration_ms=_now_ms() - t3b
-                )
-            except Exception as e:
-                debug_steps.append(
-                    AgentStepDebug(
-                        agent="fact_checker_repair(error)",
-                        input_preview=preview(repair_msg),
-                        output_preview=preview(str(e)),
-                        duration_ms=_now_ms() - t3b,
-                    )
-                )
+            )
+            await _persist_step(
+                db,
+                session_id,
+                agent_name=f"fact_checker_repair({fc_provider2})",
+                input_obj={"repair_instructions": repair_msg, "allowed_source_ids": allowed_ids},
+                output_obj={"items": [i.model_dump() for i in fact_out.items]},
+                duration_ms=d3b,
+            )
 
-        fact_checks = [ClaimCheck(claim=i.claim, status=i.status, evidence_source_ids=i.evidence_source_ids, notes=i.notes) for i in fact_out.items]
+        fact_checks = [
+            ClaimCheck(
+                claim=i.claim,
+                status=i.status,
+                evidence_source_ids=i.evidence_source_ids,
+                notes=i.notes,
+            )
+            for i in fact_out.items
+        ]
 
-        _ = estimate_tokens(summarizer_out.answer_markdown)
-
+        # Persist fact checks
         if db and session_id:
             await crud.replace_fact_checks(
                 db,
                 session_id,
                 checks=[
                     {
-                        'claim': fc.claim,
-                        'status': fc.status,
-                        'evidence_source_ids': fc.evidence_source_ids,
-                        'notes': fc.notes
+                        "claim": fc.claim,
+                        "status": fc.status,
+                        "evidence_source_ids": fc.evidence_source_ids,
+                        "notes": fc.notes,
                     }
                     for fc in fact_checks
-                ]
+                ],
             )
             await crud.mark_session_completed(db, session_id)
 
         return {
-            'request_id': request_id,
-            'needs_clarification': False,
-            'clarifying_questions': [],
-            'subquestions': subquestions,
-            'summary_markdown': summarizer_out.answer_markdown,
-            'sources': api_sources,
-            'fact_checks': fact_checks,
-            'debug_steps': debug_steps
+            "request_id": request_id,
+            "needs_clarification": False,
+            "clarifying_questions": [],
+            "subquestions": subquestions,
+            "summary_markdown": summarizer_out.answer_markdown,
+            "sources": api_sources,
+            "fact_checks": fact_checks,
+            "debug_steps": debug_steps,
         }
+
     except Exception as e:
         if db and session_id:
             await crud.mark_session_failed(db, session_id, error=str(e))
