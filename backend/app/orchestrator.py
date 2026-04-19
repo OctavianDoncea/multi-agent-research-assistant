@@ -2,6 +2,7 @@ import time
 import uuid
 import re
 from typing import Any
+from collections.abc import Awaitable, Callable
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.schemas import AgentStepDebug, Source, ClaimCheck
@@ -11,9 +12,9 @@ from app.agents.planner import run_planner
 from app.agents.researcher import run_researcher, ResearchBundle
 from app.agents.summarizer import run_summarizer
 from app.agents.fact_checker import run_fact_checker
-
 from app.db import crud
 
+ProgressEmitter = Callable[[str, dict], Awaitable[None]]
 
 def _now_ms() -> int:
     return int(time.time() * 1000)
@@ -32,6 +33,10 @@ def extract_citation_ids(markdown: str) -> set[str]:
             ids.add(sid)
     return ids
 
+async def _emit(emit: ProgressEmitter | None, *, stage: str, status: str, **extra: Any):
+    if not emit:
+        return
+    await emit('progress', {'stage': stage, 'status': status, **extra})
 
 def _pack_sources_for_llm(bundles: list[ResearchBundle]) -> list[tuple[str, str, str | None]]:
     """
@@ -60,14 +65,7 @@ def _pack_sources_for_llm(bundles: list[ResearchBundle]) -> list[tuple[str, str,
     return packed
 
 
-async def _persist_step(
-    db: AsyncSession | None,
-    session_id: uuid.UUID | None,
-    *,
-    agent_name: str,
-    input_obj: dict | None,
-    output_obj: dict | None,
-    duration_ms: int,
+async def _persist_step(db: AsyncSession | None, session_id: uuid.UUID | None, *, agent_name: str, input_obj: dict | None, output_obj: dict | None, duration_ms: int,
 ) -> None:
     if not db or not session_id:
         return
@@ -95,6 +93,7 @@ async def run_research_pipeline(
     *,
     db: AsyncSession | None = None,
     session_id: uuid.UUID | None = None,
+    emit: ProgressEmitter | None = None
 ) -> dict[str, Any]:
     request_id = str(uuid.uuid4())
     debug_steps: list[AgentStepDebug] = []
@@ -102,6 +101,7 @@ async def run_research_pipeline(
     max_subq = max_subquestions or settings.max_subquestions
 
     try:
+        await _emit(emit, stage='planner', status='start')
         # 1) Planner
         t0 = _now_ms()
         planner_out, planner_provider = await run_planner(query, max_subquestions=max_subq)
@@ -125,6 +125,7 @@ async def run_research_pipeline(
         )
 
         if planner_out.needs_clarification:
+            await _emit(emit, stage='planner', status='needs_clarification')
             if db and session_id:
                 await crud.mark_session_completed(db, session_id)
             return {
@@ -138,14 +139,20 @@ async def run_research_pipeline(
                 "debug_steps": debug_steps,
             }
 
+        await _emit(emit, stage='planner', status='done')
+
         subquestions = planner_out.subquestions[:max_subq]
 
         # 2) Researcher
+        await _emit(emit, stage='researcher', status='start', subquestions=len(subquestions))
         bundles: list[ResearchBundle] = []
         t1 = _now_ms()
         for i, sq in enumerate(subquestions):
+            await _emit(emit, stage='researcher', status='subquestion_start', index=1, subquestion=sq)
             bundle = await run_researcher(sq, source_id_prefix=f"S{i+1}-")
             bundles.append(bundle)
+            extracted_count = sum(1 for s in bundle.sources if s.extracted_text)
+            await _emit(emit, stage='researcher', status='subquestion_done', index=i, subquestions=sq, sources=len(bundles.sources), extracted=extracted_count)
         d1 = _now_ms() - t1
 
         debug_steps.append(
@@ -185,6 +192,7 @@ async def run_research_pipeline(
             output_obj=researcher_output,
             duration_ms=d1,
         )
+        await _emit(emit, stage='researcher', status='done')
 
         # Flatten sources for API response
         api_sources: list[Source] = []
@@ -220,6 +228,7 @@ async def run_research_pipeline(
         # If no extracted content, return message
         packed_sources = _pack_sources_for_llm(bundles)
         if not packed_sources:
+            await _emit(emit, stage='summarizer', status='skipped_no_sources')
             if db and session_id:
                 await crud.mark_session_completed(db, session_id)
             return {
@@ -237,6 +246,7 @@ async def run_research_pipeline(
         allowed_set = set(allowed_ids)
 
         # 3) Summarizer
+        await _emit(emit, stge='summarizer', status='start', sources=len(allowed_ids))
         t2 = _now_ms()
         summarizer_out, sum_provider = await run_summarizer(
             query,
@@ -267,6 +277,7 @@ async def run_research_pipeline(
         invalid_citations = sorted([cid for cid in cited_ids if cid not in allowed_set])
 
         if (not cited_ids) or invalid_citations:
+            await _emit(emit, stage='summarizer', status='repair_start', invalid=invalid_citations)
             t2b = _now_ms()
             repair_msg = (
                 "Your previous answer had citation issues.\n"
@@ -298,8 +309,10 @@ async def run_research_pipeline(
                 output_obj=summarizer_out.model_dump(),
                 duration_ms=d2b,
             )
+        await _emit(emit, stage='summarizer', status='done')
 
         # 4) Fact-checker
+        await _emit(emit, stage='fact_checker', status='start')
         t3 = _now_ms()
         fact_out, fc_provider = await run_fact_checker(
             summarizer_out.answer_markdown,
@@ -335,6 +348,7 @@ async def run_research_pipeline(
         )
 
         if invalid_evidence_ids:
+            await _emit(emit, stage='fact_checker', status='repair_start', invalid=invalid_evidence_ids)
             t3b = _now_ms()
             repair_msg = (
                 "Your previous output used invalid evidence_source_ids.\n"
@@ -365,6 +379,9 @@ async def run_research_pipeline(
                 output_obj={"items": [i.model_dump() for i in fact_out.items]},
                 duration_ms=d3b,
             )
+            await _emit(emit, stage='fact_checker', status='repair_done')
+        
+        await _emit(emit, stage='fact_checker', status='done')
 
         fact_checks = [
             ClaimCheck(
@@ -376,7 +393,7 @@ async def run_research_pipeline(
             for i in fact_out.items
         ]
 
-        # Persist fact checks
+        # Persist fact checks + mark complete
         if db and session_id:
             await crud.replace_fact_checks(
                 db,
@@ -393,6 +410,8 @@ async def run_research_pipeline(
             )
             await crud.mark_session_completed(db, session_id)
 
+        await _emit(emit, stage='pipeline', status='done')
+
         return {
             "request_id": request_id,
             "needs_clarification": False,
@@ -405,6 +424,7 @@ async def run_research_pipeline(
         }
 
     except Exception as e:
+        await _emit(emit, stage='pipeline', status='error', message=str(e))
         if db and session_id:
             await crud.mark_session_failed(db, session_id, error=str(e))
         raise
