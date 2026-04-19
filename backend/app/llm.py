@@ -2,11 +2,22 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Literal
 from openai import AsyncOpenAI
-from tenacity import retry, stop_after_attempt, wait_exponential
+from tenacity import RetryError, retry, stop_after_attempt, wait_exponential
 from app.config import settings
 
 class LLMError(RuntimeError):
     pass
+
+
+def _unwrap_retry_error(exc: BaseException) -> BaseException:
+    if isinstance(exc, RetryError):
+        try:
+            inner = exc.last_attempt.exception()
+            if inner is not None:
+                return inner
+        except Exception:
+            pass
+    return exc
 
 
 @dataclass
@@ -79,8 +90,9 @@ class LLMRouter:
                 out = await p.chat(model=model, messages=messages, temperature=temperature, max_tokens=max_tokens)
                 return out, name
             except Exception as e:
-                last_err = e
+                last_err = _unwrap_retry_error(e)
 
-        raise LLMError(f'No LLm provider succeeded. Last error: {last_err}')
+        detail = _unwrap_retry_error(last_err) if last_err else 'unknown'
+        raise LLMError(f'No LLM provider succeeded. Last error: {detail}')
 
 llm_router = LLMRouter()

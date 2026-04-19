@@ -66,14 +66,16 @@ async def run_fact_checker(answer_markdown: str, packed_sources: list[tuple[str,
     if repair_instructions:
         prefix = f'REPAIR TASK:\n{repair_instructions}\n\n'
     
+    # Single str (comma-separated parts would build a tuple and break the chat API).
+    user_content = (
+        f'{prefix}'
+        f'{constraint_block}'
+        f'ANSWER:\n{answer_markdown}\n\n'
+        f'SOURCE EXCERPTS:\n{_format_sources(packed_sources)}'
+    )
     messages = [
         LLMMEssage(role='system', content=FACTCHECK_SYSTEM),
-        LLMMEssage(role='user', content=(
-            f'{prefix}',
-            f'{constraint_block}',
-            f'ANSWER:\n{answer_markdown}\n\n',
-            f'SOURCE EXCERPTS:\n{_format_sources(packed_sources)}'
-        ))
+        LLMMEssage(role='user', content=user_content),
     ]
     text, provider = await llm_router.chat(messages, models={'groq': settings.groq_model_factchecker, 'ollama': settings.ollama_model}, temperature=0.1, max_tokens=1200)
     try:

@@ -2,14 +2,11 @@ import time
 import uuid
 import re
 from typing import Any
-
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.config import settings
 from app.schemas import AgentStepDebug, Source, ClaimCheck
 from app.utils.text import preview, truncate
 from app.utils.tokens import estimate_tokens
-
 from app.agents.planner import run_planner
 from app.agents.researcher import run_researcher, ResearchBundle
 from app.agents.summarizer import run_summarizer
@@ -212,7 +209,7 @@ async def run_research_pipeline(
                     {
                         "source_id": s.source_id,
                         "url": s.url,
-                        "title": s.title,
+                        #"title": s.title,
                         "snippet": s.snippet,
                         "content_excerpt": truncate(s.extracted_text, 8000) if s.extracted_text else None,
                     }
@@ -220,7 +217,7 @@ async def run_research_pipeline(
                 ],
             )
 
-        # If no extracted content, return graceful message
+        # If no extracted content, return message
         packed_sources = _pack_sources_for_llm(bundles)
         if not packed_sources:
             if db and session_id:

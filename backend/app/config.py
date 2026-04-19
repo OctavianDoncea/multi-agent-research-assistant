@@ -39,7 +39,7 @@ class Settings:
 
     # Extraction / prompt budgeting
     max_chars_per_page: int = int(os.getenv('MAX_CHARS_PER_PAGE', '8000'))
-    max_total_source_chats: int = int(os.getenv('MAX_TOTAL_SOURCE_CHARS', '24000'))
+    max_total_source_chars: int = int(os.getenv('MAX_TOTAL_SOURCE_CHARS', '24000'))
 
     cors_origins: list[str] = field(
         default_factory=lambda: _split_csv(

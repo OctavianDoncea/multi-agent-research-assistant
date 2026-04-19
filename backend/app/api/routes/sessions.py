@@ -5,11 +5,11 @@ from app.db.session import get_db
 from app.db import crud
 from app.schemas import SessionListItem, SessionDetail, Source, ClaimCheck, SessionStep
 
-router = APIRouter(prefic='/api/sessions', tags=['sessions'])
+router = APIRouter(prefix='/api/sessions', tags=['sessions'])
 
 
 @router.get('', response_model=list[SessionListItem])
-async def list_sessions(db: AsyncSession = Depends(get_db), limit: int = Query(default=50, g1=1, le=200)):
+async def list_sessions(db: AsyncSession = Depends(get_db), limit: int = Query(default=50, ge=1, le=200)):
     sessions = await crud.list_sessions(db)
 
     return [SessionListItem(id=s.id, user_query=s.user_query, status=s.status, created_at=s.created_at) for s in sessions]
