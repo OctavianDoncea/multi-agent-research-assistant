@@ -31,7 +31,7 @@ export interface ResearchResponse {
     summary_markdown?: string | null
     sources: Source[]
     fact_checks: ClaimCheck[]
-    debug_step: AgentStepDebug[]
+    debug_steps: AgentStepDebug[]
 }
 
 export interface SessionListItem {
