@@ -148,11 +148,11 @@ async def run_research_pipeline(
         bundles: list[ResearchBundle] = []
         t1 = _now_ms()
         for i, sq in enumerate(subquestions):
-            await _emit(emit, stage='researcher', status='subquestion_start', index=1, subquestion=sq)
+            await _emit(emit, stage="researcher", status="subquestion_start", index=i, subquestion=sq)
             bundle = await run_researcher(sq, source_id_prefix=f"S{i+1}-")
             bundles.append(bundle)
             extracted_count = sum(1 for s in bundle.sources if s.extracted_text)
-            await _emit(emit, stage='researcher', status='subquestion_done', index=i, subquestions=sq, sources=len(bundles.sources), extracted=extracted_count)
+            await _emit(emit, stage="researcher", status="subquestion_done", index=i, subquestion=sq, sources=len(bundle.sources), extracted=extracted_count)
         d1 = _now_ms() - t1
 
         debug_steps.append(
@@ -246,7 +246,7 @@ async def run_research_pipeline(
         allowed_set = set(allowed_ids)
 
         # 3) Summarizer
-        await _emit(emit, stge='summarizer', status='start', sources=len(allowed_ids))
+        await _emit(emit, stage='summarizer', status='start', sources=len(allowed_ids))
         t2 = _now_ms()
         summarizer_out, sum_provider = await run_summarizer(
             query,

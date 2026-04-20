@@ -18,7 +18,7 @@ def _sse(event: str, data: Any) -> bytes:
 
     return f'event: {event}\ndata: {payload}\n\n'.encode('utf-8')
 
-@router.post('', research_model=ResearchResponse)
+@router.post('', response_model=ResearchResponse)
 async def research(req: ResearchRequest, db: AsyncSession = Depends(get_db)):
     session = await crud.create_research_session(db, user_query=req.query)
     result = await run_research_pipeline(req.query, max_subquestions=req.max_subquestions, db=db, session_id=session.id, emit=None)
