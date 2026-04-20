@@ -34,7 +34,7 @@ export function HistorySidebar({ sessions, selectedId, onSelect }: { sessions: S
                         </button>
                     )
                 })}
-                {session.length === 0 ? (<div className="p-4 text-sm text-gray-600">No sessions yet.</div>) : null}
+                {sessions.length === 0 ? (<div className="p-4 text-sm text-gray-600">No sessions yet.</div>) : null}
             </div>
         </div>
     )

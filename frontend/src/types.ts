@@ -26,7 +26,7 @@ export interface ResearchResponse {
     session_id?: string | null
     query: string
     needs_clarification: boolean
-    clarifying_question: string[]
+    clarifying_questions: string[]
     subquestions: string[]
     summary_markdown?: string | null
     sources: Source[]
