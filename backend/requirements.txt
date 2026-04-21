@@ -11,3 +11,5 @@ tenacity
 SQLAlchemy
 asyncpg
 alembic
+pytest
+pytest-asyncio
