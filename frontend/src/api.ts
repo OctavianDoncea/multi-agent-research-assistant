@@ -11,7 +11,7 @@ export async function listSessions(limit = 50): Promise<SessionListItem[]> {
 }
 
 export async function getSession(id: string): Promise<SessionDetail> {
-    return apiGet(`/api/session/${id}`)
+    return apiGet(`/api/sessions/${id}`)
 }
 
 export function researchStream(

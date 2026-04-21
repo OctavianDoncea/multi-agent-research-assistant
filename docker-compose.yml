@@ -25,11 +25,15 @@ services:
     environment:
       POSTGRES_HOST: db
       POSTGRES_PORT: 5432
+      OLLAMA_BASE_URL: http://ollama:11434/v1
     ports:
       - "8000:8000"
     depends_on:
       db:
-        condition: service_health
+        condition: service_healthy
+      ollama:
+        condition: service_started
+        required: false
 
   frontend:
     build:
@@ -49,6 +53,10 @@ services:
       - ollama:/root/.ollama
     restart: unless-stopped
     profiles: ["ollama"]
+
+networks:
+  default:
+    driver: bridge
 
 volumes:
   multi-agent_pgdata:

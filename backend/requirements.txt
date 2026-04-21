@@ -5,7 +5,7 @@ python-dotenv
 httpx
 beautifulsoup4
 trafilatura
-duckduckgo.search
+ddgs
 openai
 tenacity
 SQLAlchemy
