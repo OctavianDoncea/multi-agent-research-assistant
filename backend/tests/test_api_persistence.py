@@ -7,7 +7,7 @@ from app.agents.fact_checker import FactCheckerOutput, FactCheckItem
 from app.agents.researcher import ResearchBundle, ResearchSource
 
 @pytest.mark.asyncio
-async def test_research_persists_session_and_history(monkeypatch, fastappi_app):
+async def test_research_persists_session_and_history(monkeypatch, fastapi_app):
     import app.orchestrator as orch
 
     # Mock agent calls inside orchestrator
