@@ -141,6 +141,29 @@ export default function App() {
   const [stageState, setStageState] = useState<StageState>(initialStageState)
   const [progressMsg, setProgressMsg] = useState<string | null>(null)
   const closeStreamRef = useRef<null | (() => void)>(null)
+  const [copyNotice, setCopyNotice] = useState<string | null>(null)
+
+  async function copyToClipboard(text: string) {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text)
+      return
+    }
+
+    const ta = document.createElement('textarea')
+    ta.value = text
+    ta.style.position = 'fixed'
+    ta.style.left = '-999px'
+    document.body.appendChild(ta)
+    ta.focus()
+    ta.select()
+    // eslint-disable-next-line @typescript-eslint/no-deprecated
+    document.execCommand('copy')
+    ta.remove()
+  }
+
+  function shareUrl(sessionId: string) {
+    return `${window.location.origin}/sessions/${sessionId}`
+  }
 
   const highlightSourceId = useMemo(() => {
     // hash format: #source-S1-1
@@ -324,8 +347,34 @@ export default function App() {
               ) : null}
 
               {selectedSessionId ? (
-                <div className="text-xs text-gray-600 dark:text-gray-300">
-                  Session: <span className="font-mono">{selectedSessionId}</span>
+                <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300 flex-wrap">
+                  <div>
+                    Session: <span className="font-mono">{selectedSessionId}</span>
+                  </div>
+
+                  <button
+                    type="button"
+                    className="px-2 py-1 rounded border bg-white hover:bg-gray-50 dark:bg-gray-900 dark:hover:bg-gray-800 dark:border-gray-700"
+                    onClick={async () => {
+                      try {
+                        const url = window.location.href
+                        await copyToClipboard(url)
+                        setCopyNotice('Copied link')
+                        window.setTimeout(() => setCopyNotice(null), 1500)
+                      } catch (e) {
+                        setCopyNotice('Copy failed')
+                        window.setTimeout(() => setCopyNotice(null), 1500)
+                      }
+                    }}
+                  >
+                    Copy link
+                  </button>
+
+                  {copyNotice ? (
+                    <span className="text-[11px] px-2 py-1 rounded bg-green-50 text-green-800 border border-green-200 dark:bg-green-950 dark:text-green-20 dark:border-green-900">
+                      {copyNotice}
+                    </span>
+                  ) : null}
                 </div>
               ) : null}
             </section>
