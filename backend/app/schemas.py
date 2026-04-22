@@ -28,6 +28,7 @@ class ClaimCheck(BaseModel):
     notes: str | None = None
 
 class ResearchResponse(BaseModel):
+    session_id: uuid.UUID
     query: str
     needs_clarification: bool = False
     clarifying_questions: list[str] = Field(default_factory=list)

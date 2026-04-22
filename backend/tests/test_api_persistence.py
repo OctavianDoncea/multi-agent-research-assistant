@@ -67,7 +67,7 @@ async def test_research_persists_session_and_history(monkeypatch, fastapi_app):
 
         # List sessions
         resp2 = await client.get('/api/sessions')
-        assert resp2.starus_code == 200
+        assert resp2.status_code == 200
         sessions = resp2.json()
         assert len(sessions) == 1
         assert sessions[0]['id'] == str(session_id)
