@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Route, Routes, useLocation, useNavigate, useParams, Navigate } from 'react-router-dom'
 import type { ProgressEvent, ResearchResponse, SessionDetail, SessionListItem } from './types'
 import { getSession, listSessions, researchStream } from './api'
@@ -141,6 +141,7 @@ export default function App() {
   const [stageState, setStageState] = useState<StageState>(initialStageState)
   const [progressMsg, setProgressMsg] = useState<string | null>(null)
   const closeStreamRef = useRef<null | (() => void)>(null)
+  const streamingSessionIdRef = useRef<string | null>(null)
   const [copyNotice, setCopyNotice] = useState<string | null>(null)
 
   async function copyToClipboard(text: string) {
@@ -206,12 +207,13 @@ export default function App() {
 
     closeStreamRef.current = researchStream(q, {
       onSession: (sessionId) => {
+        streamingSessionIdRef.current = sessionId
         setSelectedSessionId(sessionId)
-        // shareable URL as soon as session exists
         navigate(`/sessions/${sessionId}`, { replace: true })
       },
       onProgress: (evt) => updateFromProgress(evt),
       onFinal: async (data) => {
+        streamingSessionIdRef.current = null
         setCurrent(data)
         setLoading(false)
         setProgressMsg('done')
@@ -222,10 +224,12 @@ export default function App() {
         await refreshHistory()
       },
       onServerError: (message) => {
+        streamingSessionIdRef.current = null
         setError(message)
         setLoading(false)
       },
       onNetworkError: () => {
+        streamingSessionIdRef.current = null
         setError('Network error (SSE connection failed). Is the backend running?')
         setLoading(false)
       }
@@ -256,16 +260,18 @@ export default function App() {
     navigate(`/sessions/${id}`)
   }
 
-  function handleSessionLoaded(detail: SessionDetail) {
-    // Populate the search box with the question (your requirement)
+  const handleSessionLoaded = useCallback((detail: SessionDetail) => {
+    // If this session is currently being streamed, the SSE is authoritative —
+    // don't overwrite live loading/stage state with a partial DB snapshot.
+    if (streamingSessionIdRef.current === detail.id) {
+      setSelectedSessionId(detail.id)
+      return
+    }
+
     setQuery(detail.user_query)
     setLastRunQuery(detail.user_query)
     setSelectedSessionId(detail.id)
-
-    // Show data in the main view
     setCurrent(mapDetailToResearch(detail))
-
-    // Reset progress display to "done-ish" since this is historical
     setLoading(false)
     setProgressMsg('loaded from history')
     setStageState({
@@ -274,7 +280,7 @@ export default function App() {
       summarizer: 'done',
       fact_checker: 'done'
     })
-  }
+  }, [])
 
   return (
     <div className="min-h-screen h-full">
