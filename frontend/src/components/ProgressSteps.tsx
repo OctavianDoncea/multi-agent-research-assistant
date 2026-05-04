@@ -29,7 +29,7 @@ export function ProgressSteps({ state, message }: { state: StageState, message?:
               </span>
             ))}
           </div>
-          {message ? <div className="text-xs text-gray-600">{message}</div> : null}
+          {message ? <div className="text-xs text-gray-600" role='status' aria-live='polite'>{message}</div> : null}
         </div>
       )
 }

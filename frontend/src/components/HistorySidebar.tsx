@@ -22,7 +22,8 @@ export function HistorySidebar({ sessions, selectedId, onSelect }: { sessions: S
                         <button
                             key={s.id}
                             onClick={() => onSelect(s.id)}
-                            className={`w-full text-left px-4 py-3 border-b dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-900 ${
+                            aria-current={active ? 'page' : undefined}
+                            className={`w-full text-left px-4 py-3 border-b dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-900 focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:outline-none ${
                                 active
                                     ? 'bg-gray-100 dark:bg-gray-800'
                                     : 'bg-white dark:bg-gray-950'
