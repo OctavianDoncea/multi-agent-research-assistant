@@ -1,12 +1,40 @@
 import uuid
+from pydantic import ValidationError
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db
 from app.db import crud
 from app.schemas import SessionListItem, SessionDetail, Source, ClaimCheck, SessionStep
 from app.utils.summary_markdown import coerce_summary_markdown
+from app.agents.fact_checker import FactCheckerOutput, _normalize_factcheck_payload
 
 router = APIRouter(prefix='/api/sessions', tags=['sessions'])
+
+
+def _fact_checks_from_agent_steps(steps) -> list[ClaimCheck]:
+    out: list[ClaimCheck] = []
+    for st in reversed(steps):
+        if not st.agent_name.startswith('fact_checker') or not isinstance(st.output, dict):
+            continue
+        raw = st.output
+        if 'items' not in raw and not any(k in raw for k in ('claims', 'fact_checks', 'checks', 'results')):
+            continue
+        try:
+            parsed = FactCheckerOutput.model_validate(_normalize_factcheck_payload(raw))
+        except ValidationError:
+            continue
+        for i in parsed.items:
+            out.append(
+                ClaimCheck(
+                    claim=i.claim,
+                    status=i.status,
+                    evidence_source_ids=i.evidence_source_ids,
+                    notes=i.notes,
+                )
+            )
+        if out:
+            break
+    return out
 
 
 @router.get('', response_model=list[SessionListItem])
@@ -24,6 +52,8 @@ async def get_session_detail(session_id: uuid.UUID, db: AsyncSession = Depends(g
     steps = await crud.get_session_steps(db, session_id)
     sources = await crud.get_session_sources(db, session_id)
     checks = await crud.get_session_fact_checks(db, session_id)
+    if not checks:
+        checks = _fact_checks_from_agent_steps(steps)
 
     # Best-effort summary: take from summarizer step output (coerce nested / JSON-shaped blobs)
     summary_md = None
