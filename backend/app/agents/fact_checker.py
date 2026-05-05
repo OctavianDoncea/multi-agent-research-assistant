@@ -1,3 +1,4 @@
+import re
 from pydantic import BaseModel, Field
 from typing import Literal
 from app.llm import LLMMEssage, llm_router
@@ -43,6 +44,15 @@ def _normalize_factcheck_payload(data: object) -> dict:
             it['evidence_source_ids'] = []
         out.append(it)
     return {'items': out}
+
+
+def _strip_markdown_code_fence(text: str) -> str:
+    s = text.strip()
+    if not s.startswith('```'):
+        return s
+    s = re.sub(r'^```[a-zA-Z0-9_-]*\s*', '', s, count=1)
+    s = re.sub(r'\s*```\s*$', '', s, count=1)
+    return s.strip()
 
 FACTCHECK_SYSTEM = """You are a fact-checker agent.
 
@@ -107,9 +117,10 @@ async def run_fact_checker(answer_markdown: str, packed_sources: list[tuple[str,
         LLMMEssage(role='system', content=FACTCHECK_SYSTEM),
         LLMMEssage(role='user', content=user_content),
     ]
-    text, provider = await llm_router.chat(messages, models={'groq': settings.groq_model_factchecker, 'ollama': settings.ollama_model}, temperature=0.1, max_tokens=1200)
+    text, provider = await llm_router.chat(messages, models={'groq': settings.groq_model_factchecker, 'ollama': settings.ollama_model}, temperature=0.1, max_tokens=2400)
+    cleaned = _strip_markdown_code_fence(text)
     try:
-        data = parse_json_lenient(text)
+        data = parse_json_lenient(cleaned)
     except JSONParseError:
         return FactCheckerOutput(items=[]), provider
 
