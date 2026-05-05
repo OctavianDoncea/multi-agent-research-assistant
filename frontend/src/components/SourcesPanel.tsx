@@ -22,11 +22,11 @@ export function SourcesPanel({ sources, highlightSourcesId, onOpenSource }: { so
             key={s.source_id}
             id={`source-${s.source_id}`}
             className={[
-              'border rounded bg-white p-3 dark:bg-gray-900 dark:border-gray-800 scroll-mt-24',
+              'border rounded bg-white p-3 dark:bg-gray-900 dark:border-gray-800 scroll-mt-24 min-w-0 overflow-hidden',
               isActive ? 'ring-2 ring-yellow-300 border-yellow-300' : ''
             ].join(' ')}
           >
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center justify-between gap-3 min-w-0">
               {onOpenSource ? (
                 <button
                   type="button"
@@ -40,12 +40,28 @@ export function SourcesPanel({ sources, highlightSourcesId, onOpenSource }: { so
                 <div className="font-mono text-xs text-gray-600 dark:text-gray-300">{s.source_id}</div>
               )}
 
-              <a className="text-xs" href={s.url} target="_blank" rel="noreferrer">
+              <a
+                className="text-xs shrink-0 text-blue-600 dark:text-blue-400 hover:underline"
+                href={s.url}
+                target="_blank"
+                rel="noreferrer"
+              >
                 Open
               </a>
             </div>
 
-            <div className="mt-1 font-medium text-sm">{s.title ?? s.url}</div>
+            <div className="mt-1 font-medium text-sm break-words text-gray-900 dark:text-gray-100">
+              {s.title ?? 'Source'}
+            </div>
+            <a
+              className="mt-0.5 block text-xs break-all text-blue-600 dark:text-blue-400 hover:underline min-w-0"
+              href={s.url}
+              target="_blank"
+              rel="noreferrer"
+              title={s.url}
+            >
+              {s.url}
+            </a>
 
             {s.snippet ? (
               <div className="mt-1 text-xs text-gray-700 dark:text-gray-300">{s.snippet}</div>

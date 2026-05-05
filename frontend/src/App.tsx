@@ -545,9 +545,9 @@ export default function App() {
             ) : null}
 
             {showReport ? (
-              <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4">
+              <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4 min-w-0">
                 {/* Main report column */}
-                <div className="space-y-4">
+                <div className="space-y-4 min-w-0">
                   <section className="border rounded bg-white dark:bg-gray-900 dark:border-gray-800 p-4">
                     <div className="space-y-1">
                       <div className="text-xs text-gray-600 dark:text-gray-300">Question</div>
@@ -564,8 +564,8 @@ export default function App() {
                     </div>
                   </section>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <section className="border rounded bg-white dark:bg-gray-900 dark:border-gray-800 p-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 min-w-0">
+                    <section className="border rounded bg-white dark:bg-gray-900 dark:border-gray-800 p-4 min-w-0">
                       <div className="font-semibold mb-2">Sources</div>
                       <SourcesPanel
                         sources={current.sources ?? []}
@@ -574,7 +574,7 @@ export default function App() {
                       />
                     </section>
 
-                    <section className="border rounded bg-white dark:bg-gray-900 dark:border-gray-800 p-4">
+                    <section className="border rounded bg-white dark:bg-gray-900 dark:border-gray-800 p-4 min-w-0">
                       <div className="font-semibold mb-2">Fact checks</div>
                       <FactChecksPanel checks={current.fact_checks ?? []} />
                     </section>
