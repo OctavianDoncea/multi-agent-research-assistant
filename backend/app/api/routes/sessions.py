@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db
 from app.db import crud
 from app.schemas import SessionListItem, SessionDetail, Source, ClaimCheck, SessionStep
+from app.utils.summary_markdown import coerce_summary_markdown
 
 router = APIRouter(prefix='/api/sessions', tags=['sessions'])
 
@@ -24,11 +25,11 @@ async def get_session_detail(session_id: uuid.UUID, db: AsyncSession = Depends(g
     sources = await crud.get_session_sources(db, session_id)
     checks = await crud.get_session_fact_checks(db, session_id)
 
-    # Best-effort summary: take from summarizer step output
+    # Best-effort summary: take from summarizer step output (coerce nested / JSON-shaped blobs)
     summary_md = None
     for st in steps:
         if st.agent_name.startswith('summarizer') and st.output and 'answer_markdown' in st.output:
-            summary_md = st.output.get('answer_markdown')
+            summary_md = coerce_summary_markdown(st.output.get('answer_markdown'))
             break
 
     return SessionDetail(

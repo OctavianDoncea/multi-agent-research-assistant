@@ -13,6 +13,7 @@ from app.agents.researcher import run_researcher, ResearchBundle
 from app.agents.summarizer import run_summarizer
 from app.agents.fact_checker import run_fact_checker
 from app.db import crud
+from app.utils.summary_markdown import coerce_summary_markdown
 
 ProgressEmitter = Callable[[str, dict], Awaitable[None]]
 
@@ -236,7 +237,9 @@ async def run_research_pipeline(
                 "needs_clarification": False,
                 "clarifying_questions": [],
                 "subquestions": subquestions,
-                "summary_markdown": "No readable source content could be extracted from the top search results. Try a different query or more specific keywords.",
+                "summary_markdown": coerce_summary_markdown(
+                    "No readable source content could be extracted from the top search results. Try a different query or more specific keywords."
+                ),
                 "sources": api_sources,
                 "fact_checks": [],
                 "debug_steps": debug_steps,
@@ -417,7 +420,7 @@ async def run_research_pipeline(
             "needs_clarification": False,
             "clarifying_questions": [],
             "subquestions": subquestions,
-            "summary_markdown": summarizer_out.answer_markdown,
+            "summary_markdown": coerce_summary_markdown(summarizer_out.answer_markdown),
             "sources": api_sources,
             "fact_checks": fact_checks,
             "debug_steps": debug_steps,

@@ -62,4 +62,17 @@ async def run_summarizer(user_query: str, packed_sources: list[tuple[str, str, s
     except JSONParseError:
         return SummarizerOutput(answer_markdown=text.strip(), key_points=[]), provider
 
+    if isinstance(data, dict):
+        am = data.get('answer_markdown')
+        if isinstance(am, dict) and isinstance(am.get('answer_markdown'), str):
+            kp = data.get('key_points') if isinstance(data.get('key_points'), list) else am.get('key_points')
+            data = {'answer_markdown': am['answer_markdown'], 'key_points': kp or []}
+        elif isinstance(am, str) and am.strip().startswith('{'):
+            try:
+                inner = parse_json_lenient(am)
+                if isinstance(inner, dict) and isinstance(inner.get('answer_markdown'), str):
+                    data = inner
+            except JSONParseError:
+                pass
+
     return SummarizerOutput.model_validate(data), provider
