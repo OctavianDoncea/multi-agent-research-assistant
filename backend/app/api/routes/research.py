@@ -67,7 +67,7 @@ async def research_stream(request: Request, query: str = Query(min_length=3, max
             )
             await queue.put(('final', final_payload))
         except Exception as e:
-            await queue.put(('server put', {'message': str(e)}))
+            await queue.put(('server_error', {'message': str(e)}))
 
     task = asyncio.create_task(runner())
 

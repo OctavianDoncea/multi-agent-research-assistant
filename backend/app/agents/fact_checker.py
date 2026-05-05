@@ -14,6 +14,36 @@ class FactCheckItem(BaseModel):
 class FactCheckerOutput(BaseModel):
     items: list[FactCheckItem] = Field(default_factory=list)
 
+
+def _normalize_factcheck_payload(data: object) -> dict:
+    if not isinstance(data, dict):
+        return {'items': []}
+    items = data.get('items')
+    if not isinstance(items, list):
+        for key in ('claims', 'fact_checks', 'checks', 'results'):
+            alt = data.get(key)
+            if isinstance(alt, list):
+                items = alt
+                break
+        else:
+            items = []
+    out: list[dict] = []
+    for raw in items:
+        if not isinstance(raw, dict):
+            continue
+        it = dict(raw)
+        st = str(it.get('status', '')).strip().lower()
+        if st not in ('supported', 'unsupported', 'uncertain'):
+            st = 'uncertain'
+        it['status'] = st
+        ev = it.get('evidence_source_ids')
+        if isinstance(ev, str):
+            it['evidence_source_ids'] = [x.strip() for x in ev.replace(';', ',').split(',') if x.strip()]
+        elif not isinstance(ev, list):
+            it['evidence_source_ids'] = []
+        out.append(it)
+    return {'items': out}
+
 FACTCHECK_SYSTEM = """You are a fact-checker agent.
 
 You receive:
@@ -83,4 +113,4 @@ async def run_fact_checker(answer_markdown: str, packed_sources: list[tuple[str,
     except JSONParseError:
         return FactCheckerOutput(items=[]), provider
 
-    return FactCheckerOutput.model_validate(data), provider
+    return FactCheckerOutput.model_validate(_normalize_factcheck_payload(data)), provider
