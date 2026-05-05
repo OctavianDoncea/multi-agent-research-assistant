@@ -14,7 +14,7 @@ function linkifyCitations(md: string): string {
             .filter(Boolean)
         if (ids.length === 0) return _match
         const links = ids.map((id) => `[${id}](#source-${id})`).join(', ')
-        return `$({links})` 
+        return `(${links})`
     })
 }
 
