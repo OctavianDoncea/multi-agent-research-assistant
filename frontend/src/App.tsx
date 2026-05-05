@@ -4,11 +4,12 @@ import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom'
 
 import type { ProgressEvent, ResearchResponse, SessionDetail, SessionListItem, Source } from './types'
+import type { StageState } from './components/ProgressSteps'
 import { getSession, listSessions, researchStream } from './api'
 
 import { HistorySidebar } from './components/HistorySidebar'
 import { MobileHistoryDrawer } from './components/MobileHistoryDrawer'
-import { ProgressSteps, type StageState } from './components/ProgressSteps'
+import { ProgressSteps } from './components/ProgressSteps'
 import { MarkdownView } from './components/MarkdownView'
 import { SourcesPanel } from './components/SourcesPanel'
 import { FactChecksPanel } from './components/FactChecksPanel'
@@ -25,6 +26,51 @@ const initialStageState: StageState = {
   fact_checker: 'idle'
 }
 
+/** If the API stored a full summarizer JSON blob, show only answer_markdown text. */
+function unwrapSummaryMarkdown(raw: string | null | undefined): string | null {
+  if (raw == null) return null
+  const s = raw.trim()
+  if (!s) return null
+  if (s.startsWith('{') && s.includes('"answer_markdown"')) {
+    try {
+      const o = JSON.parse(s) as { answer_markdown?: unknown }
+      if (typeof o.answer_markdown === 'string') return o.answer_markdown
+    } catch {
+      /* ignore */
+    }
+  }
+  return raw
+}
+
+function deriveStageStateFromDetail(detail: SessionDetail): StageState {
+  const names = detail.steps.map((st) => st.agent_name)
+  const hasPlanner = names.some((x) => x.startsWith('planner'))
+  const hasResearcher = names.some((x) => x.includes('researcher'))
+  const hasSummarizer = names.some((x) => x.startsWith('summarizer'))
+  const hasFactChecker = names.some((x) => x.startsWith('fact_checker'))
+  const failed = detail.status === 'failed'
+  const completed = detail.status === 'completed'
+
+  const planner: StageState['planner'] = hasPlanner ? 'done' : failed ? 'error' : 'idle'
+
+  let researcher: StageState['researcher'] = 'idle'
+  if (hasResearcher) researcher = 'done'
+  else if (failed && hasPlanner) researcher = 'error'
+  else if (completed && hasPlanner && !hasResearcher) researcher = 'skipped'
+
+  let summarizer: StageState['summarizer'] = 'idle'
+  if (hasSummarizer) summarizer = 'done'
+  else if (failed && hasResearcher && !hasSummarizer) summarizer = 'error'
+  else if (completed && hasResearcher && !hasSummarizer) summarizer = 'skipped'
+
+  let fact_checker: StageState['fact_checker'] = 'idle'
+  if (hasFactChecker) fact_checker = 'done'
+  else if (failed && hasSummarizer && !hasFactChecker) fact_checker = 'error'
+  else if (completed && hasSummarizer && !hasFactChecker) fact_checker = 'skipped'
+
+  return { planner, researcher, summarizer, fact_checker }
+}
+
 function mapDetailToResearch(detail: SessionDetail): ResearchResponse {
   return {
     session_id: detail.id,
@@ -32,7 +78,7 @@ function mapDetailToResearch(detail: SessionDetail): ResearchResponse {
     needs_clarification: false,
     clarifying_questions: [],
     subquestions: [],
-    summary_markdown: detail.summary_markdown ?? null,
+    summary_markdown: unwrapSummaryMarkdown(detail.summary_markdown ?? undefined),
     sources: detail.sources,
     fact_checks: detail.fact_checks,
     debug_steps: []
@@ -109,22 +155,29 @@ function SessionLoader({
 }) {
   const { id } = useParams()
 
+  const onLoadedRef = useRef(onLoaded)
+  const onLoadingChangeRef = useRef(onLoadingChange)
+  const onErrorRef = useRef(onError)
+  onLoadedRef.current = onLoaded
+  onLoadingChangeRef.current = onLoadingChange
+  onErrorRef.current = onError
+
   useEffect(() => {
     let alive = true
 
     async function run() {
       if (!id) return
-      onLoadingChange(true)
+      onLoadingChangeRef.current(true)
       try {
         const detail = await getSession(id)
         if (!alive) return
-        onLoaded(detail)
+        onLoadedRef.current(detail)
       } catch (e) {
         if (!alive) return
-        onError(String(e))
+        onErrorRef.current(String(e))
       } finally {
         if (!alive) return
-        onLoadingChange(false)
+        onLoadingChangeRef.current(false)
       }
     }
 
@@ -132,7 +185,7 @@ function SessionLoader({
     return () => {
       alive = false
     }
-  }, [id, onLoaded, onLoadingChange, onError])
+  }, [id])
 
   return null
 }
@@ -194,13 +247,31 @@ export default function App() {
 
     setStageState((prev) => {
       const next = { ...prev }
-      if (stage === 'planner') next.planner = status === 'start' ? 'running' : status === 'done' ? 'done' : next.planner
-      if (stage === 'researcher')
-        next.researcher = status === 'start' ? 'running' : status === 'done' ? 'done' : next.researcher
-      if (stage === 'summarizer')
-        next.summarizer = status === 'start' ? 'running' : status === 'done' ? 'done' : next.summarizer
-      if (stage === 'fact_checker')
-        next.fact_checker = status === 'start' ? 'running' : status === 'done' ? 'done' : next.fact_checker
+      if (stage === 'planner') {
+        if (status === 'start') next.planner = 'running'
+        else if (status === 'done' || status === 'needs_clarification') next.planner = 'done'
+      }
+      if (stage === 'researcher') {
+        if (status === 'start') next.researcher = 'running'
+        else if (status === 'done') next.researcher = 'done'
+      }
+      if (stage === 'summarizer') {
+        if (status === 'start') next.summarizer = 'running'
+        else if (status === 'done') next.summarizer = 'done'
+        else if (status === 'skipped_no_sources') next.summarizer = 'skipped'
+        else if (status === 'repair_start') next.summarizer = 'running'
+      }
+      if (stage === 'fact_checker') {
+        if (status === 'start') next.fact_checker = 'running'
+        else if (status === 'done') next.fact_checker = 'done'
+        else if (status === 'repair_start' || status === 'repair_done') next.fact_checker = 'running'
+      }
+      if (stage === 'pipeline' && status === 'error') {
+        if (next.fact_checker === 'running') next.fact_checker = 'error'
+        else if (next.summarizer === 'running') next.summarizer = 'error'
+        else if (next.researcher === 'running') next.researcher = 'error'
+        else if (next.planner === 'running') next.planner = 'error'
+      }
       return next
     })
   }
@@ -222,7 +293,10 @@ export default function App() {
       },
       onProgress: (evt) => updateFromProgress(evt),
       onFinal: async (data) => {
-        setCurrent(data)
+        setCurrent({
+          ...data,
+          summary_markdown: unwrapSummaryMarkdown(data.summary_markdown ?? undefined)
+        })
         setLoading(false)
         setProgressMsg('done')
         if (data.session_id) {
@@ -255,9 +329,14 @@ export default function App() {
     await runStream(lastRunQuery)
   }
 
+  const sessionMatchesSelection =
+    !selectedSessionId || !current?.session_id || current.session_id === selectedSessionId
+
   const hasResult = useMemo(
-    () => !!current?.summary_markdown || (current?.sources?.length ?? 0) > 0,
-    [current]
+    () =>
+      sessionMatchesSelection &&
+      (!!current?.summary_markdown || (current?.sources?.length ?? 0) > 0),
+    [current, sessionMatchesSelection]
   )
 
   async function handleSelectSession(id: string) {
@@ -283,15 +362,14 @@ export default function App() {
 
     setLoading(false)
     setProgressMsg('loaded from history')
-    setStageState({
-      planner: 'done',
-      researcher: 'done',
-      summarizer: 'done',
-      fact_checker: 'done'
-    })
+    setStageState(deriveStageStateFromDetail(detail))
   }
 
-  const showReport = !!current && !current.needs_clarification && !!current.summary_markdown
+  const showReport =
+    !!current &&
+    !current.needs_clarification &&
+    !!current.summary_markdown &&
+    sessionMatchesSelection
 
   return (
     <div className="min-h-screen h-full">
@@ -491,7 +569,7 @@ export default function App() {
                       <div className="font-semibold mb-2">Sources</div>
                       <SourcesPanel
                         sources={current.sources ?? []}
-                        highlightSourceId={highlightSourceId}
+                        highlightSourcesId={highlightSourceId}
                         onOpenSource={(id) => setDrawerSourceId(id)}
                       />
                     </section>

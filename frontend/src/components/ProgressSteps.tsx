@@ -1,12 +1,13 @@
 type StageKey = 'planner' | 'researcher' | 'summarizer' | 'fact_checker'
 
-export type StageState = Record<StageKey, 'idle' | 'running' | 'done' | 'error'>
+export type StageState = Record<StageKey, 'idle' | 'running' | 'done' | 'error' | 'skipped'>
 
 function pillClass(state: StageState[StageKey]) {
-    if (state === 'running') return 'bg-blue-100 text-blue-800 border-blue-200'
-    if (state === 'done') return 'bg-green-100 text-green-800 border-green-200'
-    if (state === 'error') return 'bg-red-100 text-red-800 border-red-200'
-    return 'bg-gray-100 text-gray-700 border-gray-200'
+    if (state === 'running') return 'bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-950 dark:text-blue-200 dark:border-blue-900'
+    if (state === 'done') return 'bg-green-100 text-green-800 border-green-200 dark:bg-green-950 dark:text-green-200 dark:border-green-900'
+    if (state === 'error') return 'bg-red-100 text-red-800 border-red-200 dark:bg-red-950 dark:text-red-200 dark:border-red-900'
+    if (state === 'skipped') return 'bg-amber-50 text-amber-900 border-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:border-amber-900'
+    return 'bg-gray-100 text-gray-700 border-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-700'
 }
 
 export function ProgressSteps({ state, message }: { state: StageState, message?: string | null }) {

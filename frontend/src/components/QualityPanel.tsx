@@ -1,4 +1,5 @@
 import type { ClaimCheck, Source } from '../types'
+import { normalizeClaimStatus } from '../claimStatus'
 
 function hostFromUrl(url: string): string | null {
     try {
@@ -42,9 +43,9 @@ export function QualityPanel({ sources, checks }: { sources: Source[], checks: C
     const total = sources.length
     const extracted = sources.filter((s) => !!s.extracted_text).length
     const coverage = total === 0 ? 0 : Math.round((extracted / total) * 100)
-    const supported = checks.filter((c) => c.status === 'supported').length
-    const uncertain = checks.filter((c) => c.status === 'uncertain').length
-    const unsupported = checks.filter((c) => c.status === 'unsupported').length
+    const supported = checks.filter((c) => normalizeClaimStatus(c.status) === 'supported').length
+    const uncertain = checks.filter((c) => normalizeClaimStatus(c.status) === 'uncertain').length
+    const unsupported = checks.filter((c) => normalizeClaimStatus(c.status) === 'unsupported').length
 
     const buckets: Record<TrustBucket, number> = { gov: 0, edu: 0, org: 0, reference: 0, news_blog: 0, other: 0 }
 
