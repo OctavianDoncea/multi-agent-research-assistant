@@ -43,8 +43,8 @@ flowchart LR
     UI[React App]
   end
   subgraph api [FastAPI]
-    R[/api/research]
-    S[/api/sessions]
+    R["/api/research"]
+    S["/api/sessions"]
   end
   subgraph agents [Orchestrator]
     P[Planner]
