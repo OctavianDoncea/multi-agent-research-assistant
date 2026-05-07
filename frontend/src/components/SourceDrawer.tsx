@@ -1,6 +1,9 @@
-import * as Dialog from '@radix-ui/react-dialog'
-import clsx from 'clsx'
+import { Copy, Link2, X } from 'lucide-react'
+import { toast } from 'sonner'
 import type { Source } from '../types'
+import { Button } from './ui/button'
+import { Sheet, SheetClose, SheetContent, SheetTitle } from './ui/sheet'
+import { cn } from '../lib/utils'
 
 function hostFromUrl(url: string): string | null {
     try {
@@ -10,100 +13,144 @@ function hostFromUrl(url: string): string | null {
     }
 }
 
+async function copyToClipboard(text: string): Promise<boolean> {
+    try {
+        if (navigator.clipboard?.writeText) {
+            await navigator.clipboard.writeText(text)
+            return true
+        }
+        const ta = document.createElement('textarea')
+        ta.value = text
+        ta.style.position = 'fixed'
+        ta.style.left = '-9999px'
+        document.body.appendChild(ta)
+        ta.focus()
+        ta.select()
+        document.execCommand('copy')
+        ta.remove()
+        return true
+    } catch {
+        return false
+    }
+}
+
 export function SourceDrawer({
     open,
     onOpenChange,
     source
 }: {
-    open: boolean,
-    onOpenChange: (v: boolean) => void,
+    open: boolean
+    onOpenChange: (v: boolean) => void
     source: Source | null
 }) {
+    const citation = source ? `[${source.source_id}]` : ''
+
+    async function handleCopyCitation() {
+        if (!source) return
+        const ok = await copyToClipboard(citation)
+        if (ok) toast.success('Citation copied')
+        else toast.error('Could not copy citation')
+    }
+
+    async function handleCopyUrl() {
+        if (!source) return
+        const ok = await copyToClipboard(source.url)
+        if (ok) toast.success('URL copied')
+        else toast.error('Could not copy URL')
+    }
+
     return (
-        <Dialog.Root open={open} onOpenChange={onOpenChange}>
-            <Dialog.Portal>
-                <Dialog.Overlay className='fixed inset-0 bg-black/40' />
-                <Dialog.Content
-                    className={clsx(
-                        'fixed right-0 top-0 h-full w-full max-w-xl bg-white dark:bg-gray-950',
-                        'border-l dark:border-gray-800 shadow-xl',
-                        'p-4 overflow-auto focus:outline-none'
-                    )}
-                >
-                    <div className='flex items-start justify-between gap-3'>
-                        <div className='min-w-0'>
-                            <Dialog.Title className='text-sm font-semibold text-gray-900 dark:text-gray-100'>
+        <Sheet open={open} onOpenChange={onOpenChange}>
+            <SheetContent
+                side="right"
+                className="w-full max-w-xl border-l border-border p-0 sm:max-w-xl"
+            >
+                <div className="border-b border-border bg-gradient-to-br from-primary/[0.07] via-transparent to-transparent px-6 py-5">
+                    <div className="flex items-start justify-between gap-4">
+                        <div className="min-w-0">
+                            <SheetTitle className="text-left text-xl font-bold tracking-tight text-foreground">
                                 Source details
-                            </Dialog.Title>
+                            </SheetTitle>
                             {source ? (
-                                <div className='mt-1 text-xs text-gray-600 dark:text-gray-300'>
-                                    <span className='font-mono'>{source.source_id}</span>
+                                <p className="mt-2 text-sm font-medium text-muted-foreground">
+                                    <span className="font-mono text-foreground">{source.source_id}</span>
                                     {hostFromUrl(source.url) ? (
-                                        <>
-                                            {' . '}
-                                            <span>{hostFromUrl(source.url)}</span>
-                                        </>
+                                        <span className="text-muted-foreground"> · {hostFromUrl(source.url)}</span>
                                     ) : null}
-                                </div>
+                                </p>
                             ) : null}
                         </div>
-
-                        <Dialog.Close
-                            className='px-2 py-1 text-xs rounded border bg-white hover:bg-gray-50 dark:bg-gray-900 dark:hover:bg-gray-800 shrink-0
-                            dark:border-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400'
-                            aria-label='Close'
-                        >
-                            Close
-                        </Dialog.Close>
+                        <SheetClose asChild>
+                            <Button variant="ghost" size="icon" className="shrink-0 rounded-full" aria-label="Close">
+                                <X className="h-5 w-5" />
+                            </Button>
+                        </SheetClose>
                     </div>
 
-                    {!source ? (
-                        <div className='mt-4 text-sm text-gray-600 dark:text-gray-300'>
-                            No source selected.
+                    {source ? (
+                        <div className="mt-5 flex flex-wrap gap-2">
+                            <Button
+                                type="button"
+                                variant="default"
+                                size="sm"
+                                className="font-semibold shadow-soft"
+                                onClick={() => void handleCopyCitation()}
+                            >
+                                <Link2 className="h-4 w-4" />
+                                Copy citation
+                            </Button>
+                            <Button type="button" variant="secondary" size="sm" onClick={() => void handleCopyUrl()}>
+                                <Copy className="h-4 w-4" />
+                                Copy URL
+                            </Button>
                         </div>
-                    ) : (
-                        <div className='mt-4 space-y-3 min-w-0'>
-                            <div className='text-sm font-medium break-words text-gray-900 dark:text-gray-100'>
-                                {source.title ?? source.url}
-                            </div>
+                    ) : null}
+                </div>
+
+                {!source ? (
+                    <div className="px-6 py-8 text-sm text-muted-foreground">No source selected.</div>
+                ) : (
+                    <div className="flex flex-1 flex-col gap-5 overflow-y-auto px-6 py-6">
+                        <div>
+                            <h3 className="text-base font-semibold leading-snug text-foreground">
+                                {source.title ?? 'Untitled source'}
+                            </h3>
                             <a
-                                className='text-xs break-all text-blue-600 dark:text-blue-400 hover:underline'
+                                className="mt-2 inline-flex text-sm font-medium text-primary hover:underline"
                                 href={source.url}
-                                target='_blank'
-                                rel='noreferrer'
+                                target="_blank"
+                                rel="noreferrer"
                             >
                                 Open in new tab
                             </a>
                             {source.snippet ? (
-                                <div className='text-xs text-gray-700 dark:text-gray-300'>{source.snippet}</div>
+                                <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{source.snippet}</p>
                             ) : null}
-
-                            <div className='pt-2 border-t dark:border-gray-800'>
-                                <div className='text-xs font-semibold mb-2 text-gray-900 dark:text-gray-100'>
-                                    Extracted excerpts
-                                </div>
-                                {source.extracted_text ? (
-                                    <pre
-                                        className={clsx(
-                                            'whitespace-pre-wrap text-[13px] leading-relaxed rounded p-3 border',
-                                            'text-gray-900 dark:text-gray-100',
-                                            'bg-gray-50 dark:bg-gray-900',
-                                            'border-gray-200 dark:border-gray-700',
-                                            'break-words'
-                                        )}
-                                    >
-                                        {source.extracted_text}
-                                    </pre>
-                                ) : (
-                                    <div className='text-xs text-gray-600 dark:text-gray-300'>
-                                        No extracted text available for this source.
-                                    </div>
-                                )}
-                            </div>
                         </div>
-                    )}
-                </Dialog.Content>
-            </Dialog.Portal>
-        </Dialog.Root>
+
+                        <div className="rounded-xl border border-border bg-muted/30 p-4">
+                            <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                                Extracted excerpts
+                            </h4>
+                            {source.extracted_text ? (
+                                <pre
+                                    className={cn(
+                                        'mt-3 max-h-[50vh] overflow-y-auto whitespace-pre-wrap rounded-lg border border-border',
+                                        'bg-card p-4 text-[13px] leading-relaxed text-foreground',
+                                        'break-words font-sans'
+                                    )}
+                                >
+                                    {source.extracted_text}
+                                </pre>
+                            ) : (
+                                <p className="mt-3 text-sm text-muted-foreground">
+                                    No extracted text available for this source.
+                                </p>
+                            )}
+                        </div>
+                    </div>
+                )}
+            </SheetContent>
+        </Sheet>
     )
 }

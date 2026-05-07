@@ -1,9 +1,23 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { Source } from '../types'
+import  { Card, CardContent } from './ui/card'
+import { Badge } from './ui/badge'
+import { Button } from './ui/button'
+import { cn } from '../lib/utils'
+import { ExternalLink } from 'lucide-react'
+
+function host(url: string): string | null {
+  try { return new URL(url).hostname } catch { return null }
+}
+
+function faviconUrl(url: string): string | null {
+  const h = host(url)
+  if (!h) return null
+  return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(h)}&sz=64`
+}
 
 export function SourcesPanel({ sources, highlightSourcesId, onOpenSource }: { sources: Source[], highlightSourcesId?: string | null, onOpenSource: (id: string) => void }) {
   const [flashId, setFlashId] = useState<string | null>(null)
-  
   const active = useMemo(() => highlightSourcesId ?? flashId, [highlightSourcesId, flashId])
 
   useEffect(() => {
@@ -17,65 +31,62 @@ export function SourcesPanel({ sources, highlightSourcesId, onOpenSource }: { so
     <div className="space-y-3">
       {sources.map((s) => {
         const isActive = active === s.source_id
+        const h = host(s.url)
         return (
-          <div
+          <Card
             key={s.source_id}
             id={`source-${s.source_id}`}
-            className={[
-              'border rounded bg-white p-3 dark:bg-gray-900 dark:border-gray-800 scroll-mt-24 min-w-0 overflow-hidden',
-              isActive ? 'ring-2 ring-yellow-300 border-yellow-300' : ''
-            ].join(' ')}
+            className={cn('scroll-mt-24 transition', isActive ? 'ring-2 ring-ring' : '')}
           >
-            <div className="flex items-center justify-between gap-3 min-w-0">
-              {onOpenSource ? (
-                <button
-                  type="button"
-                  onClick={() => onOpenSource(s.source_id)}
-                  className="font-mono text-xs text-gray-600 dark:text-gray-300 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 rounded"
-                  aria-label={`Open details for source ${s.source_id}`}
-                >
-                  {s.source_id}
-                </button>
-              ) : (
-                <div className="font-mono text-xs text-gray-600 dark:text-gray-300">{s.source_id}</div>
-              )}
+            <CardContent className="pt-5 space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    {faviconUrl(s.url) ? (
+                      <img src={faviconUrl(s.url)!} alt="" className="h-5 w-5 rounded" />
+                    ) : null}
 
-              <a
-                className="text-xs shrink-0 text-blue-600 dark:text-blue-400 hover:underline"
-                href={s.url}
-                target="_blank"
-                rel="noreferrer"
-              >
-                Open
-              </a>
-            </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2 font-mono text-xs"
+                      onClick={() => onOpenSource?.(s.source_id)}
+                      aria-label={`Open details for source ${s.source_id}`}
+                      type="button"
+                    >
+                      {s.source_id}
+                    </Button>
 
-            <div className="mt-1 font-medium text-sm break-words text-gray-900 dark:text-gray-100">
-              {s.title ?? 'Source'}
-            </div>
-            <a
-              className="mt-0.5 block text-xs break-all text-blue-600 dark:text-blue-400 hover:underline min-w-0"
-              href={s.url}
-              target="_blank"
-              rel="noreferrer"
-              title={s.url}
-            >
-              {s.url}
-            </a>
+                    {h ? <span className="text-[11px] text-muted-foreground truncate">{h}</span> : null}
+                  </div>
 
-            {s.snippet ? (
-              <div className="mt-1 text-xs text-gray-700 dark:text-gray-300">{s.snippet}</div>
-            ) : null}
+                  <div className="mt-2 font-medium text-sm break-words">{s.title ?? s.url}</div>
+                  {s.snippet ? (
+                    <div className="mt-1 text-xs text-muted-foreground">{s.snippet}</div>
+                  ) : null}
+                </div>
 
-            <div className="mt-2 text-[11px] text-gray-500 dark:text-gray-400">
-              Extracted: {s.extracted_text ? 'yes' : 'no'}
-            </div>
-          </div>
+                <a href={s.url} target="_blank" rel="noreferrer">
+                  <Button variant="outline" size="icon" aria-label="Open source in new tab">
+                    <ExternalLink className="h-4 w-4" />
+                  </Button>
+                </a>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {s.extracted_text ? (
+                  <Badge variant="success">extracted</Badge>
+                ) : (
+                  <Badge variant="warning">no extract</Badge>
+                )}
+              </div>
+            </CardContent>
+          </Card>
         )
       })}
 
       {sources.length === 0 ? (
-        <div className="text-sm text-gray-600 dark:text-gray-300">No sources.</div>
+        <div className="text-sm text-muted-foreground">No sources.</div>
       ) : null}
     </div>
   )
