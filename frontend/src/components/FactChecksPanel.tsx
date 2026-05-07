@@ -1,31 +1,41 @@
 import type { ClaimCheck } from "../types";
-import { normalizeClaimStatus } from "../claimStatus";
+import { Card, CardContent } from './ui/card'
+import { Badge } from './ui/badge'
+import { CheckCircle2, AlertTriangle, XCircle } from 'lucide-react'
 
-function badgeClass(status: ClaimCheck['status']) {
-    const s = normalizeClaimStatus(status)
-    if (s === 'supported') return 'bg-green-100 text-green-800 border-green-200 dark:bg-green-950 dark:text-green-200 dark:border-green-900'
-    if (s === 'unsupported') return 'bg-red-100 text-red-800 border-red-200 dark:bg-red-950 dark:text-red-200 dark:border-red-900'
-    return 'bg-yellow-100 text-yellow-800 border-yellow-200 dark:bg-yellow-950 dark:text-yellow-200 dark:border-yellow-900'
+
+function badge(status: ClaimCheck['status']) {
+    if (status === 'supported') return { v: 'success' as const, Icon: CheckCircle2 }
+    if ( status === 'unsupported') return { v: 'danger' as const, Icon: XCircle }
+    return { v: 'warning' as const, Icon: AlertTriangle }
 }
 
 export function FactChecksPanel({ checks }: { checks: ClaimCheck[] }) {
     return (
         <div className="space-y-3">
-            {checks.map((c, idx) => (
-                <div key={idx} className="border rounded bg-white dark:bg-gray-900 dark:border-gray-800 p-3">
-                    <div className="flex items-center gap-2">
-                        <span className={`px-2 py-1 text-xs border rounded ${badgeClass(c.status)}`}>
-                            {normalizeClaimStatus(c.status)}
-                        </span>
-                        <span className="text-xs text-gray-600">
-                            Evidence: {c.evidence_source_ids?.join(', ') || '-'}
-                        </span>
-                    </div>
-                    <div className="mt-2 text-sm">{c.claim}</div>
-                    {c.notes ? <div className="mt-1 text-xs text-gray-600">{c.notes}</div> : null}
-                </div>
-            ))}
-            {checks.length === 0 ? <div className="text-sm text-gray-600">No fact checks</div> : null}
+          {checks.map((c, idx) => {
+            const { v, Icon } = badge(c.status)
+            return (
+              <Card key={idx}>
+                <CardContent className="pt-5 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Badge variant={v}>
+                      <span className="inline-flex items-center gap-1">
+                        <Icon className="h-3.5 w-3.5" />
+                        {c.status}
+                      </span>
+                    </Badge>
+                    <span className="text-xs text-muted-foreground">
+                      Evidence: {c.evidence_source_ids?.join(', ') || '—'}
+                    </span>
+                  </div>
+                  <div className="text-sm">{c.claim}</div>
+                  {c.notes ? <div className="text-xs text-muted-foreground">{c.notes}</div> : null}
+                </CardContent>
+              </Card>
+            )
+          })}
+          {checks.length === 0 ? <div className="text-sm text-muted-foreground">No fact checks.</div> : null}
         </div>
-    )
+      )
 }
