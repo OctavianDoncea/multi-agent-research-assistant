@@ -1,5 +1,6 @@
 import type { ClaimCheck, Source } from '../types'
 import { normalizeClaimStatus } from '../claimStatus'
+import { Progress } from './ui/progress'
 
 function hostFromUrl(url: string): string | null {
     try {
@@ -68,9 +69,7 @@ export function QualityPanel({ sources, checks }: { sources: Source[], checks: C
                     <span className='text-gray-700 dark:text-gray-200'>Extraction coverage</span>
                     <span className='font-mono text-gray-700 dark:text-gray-200'>{extracted}/{total} ({coverage}%)</span>
                 </div>
-                <div className='h-2 rounded bg-gray-200 dark:bg-gray-800 overflow-hidden'>
-                    <div className='h-2 bg-blue-500' style={{ width: `${coverage}%` }}></div>
-                </div>
+                <Progress value={coverage} className="h-2.5" />
             </div>
 
             <div className='space-y-1'>

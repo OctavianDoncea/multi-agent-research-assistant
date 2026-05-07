@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom'
+import { ChevronDown, Download, Link2, Menu, RotateCcw, Sparkles } from 'lucide-react'
+import { toast } from 'sonner'
 
 import type { ProgressEvent, ResearchResponse, SessionDetail, SessionListItem, Source } from './types'
 import type { StageState } from './components/ProgressSteps'
@@ -18,6 +20,26 @@ import { ThemeToggle, initTheme, type ThemeMode } from './components/ThemeToggle
 import { TableOfContents } from './components/TableOfContents'
 import { QualityPanel } from './components/QualityPanel'
 import { SourceDrawer } from './components/SourceDrawer'
+import { Button } from './components/ui/button'
+import { Badge } from './components/ui/badge'
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from './components/ui/card'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './components/ui/collapsible'
+import { Input } from './components/ui/input'
+
+const EXAMPLE_PROMPTS = [
+  'What are the main risks of LLM agents in production?',
+  'Summarize best practices for REST API versioning.',
+  'How does PostgreSQL MVCC work at a high level?'
+]
+
+function formatSessionWhen(iso: string | undefined): string | null {
+  if (!iso) return null
+  try {
+    return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+  } catch {
+    return null
+  }
+}
 
 const initialStageState: StageState = {
   planner: 'idle',
@@ -216,8 +238,6 @@ export default function App() {
   const [drawerSourceId, setDrawerSourceId] = useState<string | null>(null)
   const [mobileHistoryOpen, setMobileHistoryOpen] = useState(false)
 
-  const [copyNotice, setCopyNotice] = useState<string | null>(null)
-
   const highlightSourceId = useMemo(() => {
     const h = location.hash || ''
     const m = h.match(/^#source-(S\d+(?:-\d+)*)$/)
@@ -231,6 +251,11 @@ export default function App() {
   }, [current?.sources])
 
   const drawerSource = drawerSourceId ? sourcesById.get(drawerSourceId) ?? null : null
+
+  const selectedSession = useMemo(
+    () => (selectedSessionId ? sessions.find((s) => s.id === selectedSessionId) ?? null : null),
+    [sessions, selectedSessionId]
+  )
 
   const refreshHistory = useCallback(async () => {
     const s = await listSessions(50)
@@ -389,208 +414,311 @@ export default function App() {
         source={drawerSource}
       />
 
-      <div className="h-screen flex">
-        <aside className="w-80 border-r bg-white dark:bg-gray-950 dark:border-gray-800 hidden md:block">
+      <div className="flex h-screen min-h-0">
+        <aside className="hidden w-80 shrink-0 border-r border-border bg-card md:block">
           <HistorySidebar sessions={sessions} selectedId={selectedSessionId} onSelect={handleSelectSession} />
         </aside>
 
-        <main className="flex-1 overflow-auto">
-          <div className="max-w-6xl mx-auto p-4 md:p-6 space-y-4">
-            <header className="space-y-2">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h1 className="text-xl font-bold">Multi-Agent Research Assistant</h1>
-                  <div className="text-sm text-gray-600 dark:text-gray-300">
-                    Publishable research reports with citations, sources, and fact-checks.
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    className="md:hidden px-2 py-1 text-xs rounded border bg-white hover:bg-gray-50 dark:bg-gray-900 dark:hover:bg-gray-800 dark:border-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
-                    onClick={() => setMobileHistoryOpen(true)}
-                  >
-                    History
-                  </button>
-
-                  <ThemeToggle mode={theme} onChange={setTheme} />
-                </div>
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
+          <div className="sticky top-0 z-40 shrink-0 border-b border-border/80 bg-background/90 shadow-sm backdrop-blur-md supports-[backdrop-filter]:bg-background/75">
+            <div className="pointer-events-none absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-transparent via-primary to-transparent opacity-90" />
+            <div className="relative mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3 md:px-6">
+              <div className="min-w-0">
+                <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-primary">Multi-agent</div>
+                <h1 className="truncate text-base font-bold tracking-tight text-foreground md:text-lg">
+                  Research Assistant
+                </h1>
               </div>
-            </header>
-
-            <section className="border rounded bg-white dark:bg-gray-900 dark:border-gray-800 p-4 space-y-3">
-              <div className="flex flex-col lg:flex-row gap-2">
-                <input
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') onResearch().catch(() => {})
-                  }}
-                  placeholder="Ask a research question..."
-                  className="flex-1 border rounded px-3 py-2 text-sm bg-white dark:bg-gray-950 dark:border-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
-                  aria-label="Research question"
-                />
-
-                <button
-                  onClick={() => onResearch()}
-                  disabled={loading || routeLoading}
-                  className="px-4 py-2 rounded bg-gray-900 text-white text-sm disabled:opacity-50 dark:bg-white dark:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
-                >
-                  {loading ? 'Researching…' : 'Research'}
-                </button>
-
-                <button
-                  onClick={() => {
-                    if (!current) return
-                    const md = buildExportMarkdown(current)
-                    const safe = (current.query || 'report').slice(0, 60).replace(/[^\w\- ]+/g, '')
-                    downloadText(`mara-${safe}.md`, md)
-                  }}
-                  disabled={!current}
-                  className="px-3 py-2 rounded border text-sm bg-white hover:bg-gray-50 disabled:opacity-50 dark:bg-gray-900 dark:hover:bg-gray-800 dark:border-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
-                >
-                  Export
-                </button>
-
-                <button
-                  onClick={() => onRetry()}
-                  disabled={!lastRunQuery || loading || routeLoading}
-                  className="px-3 py-2 rounded border text-sm bg-white hover:bg-gray-50 disabled:opacity-50 dark:bg-gray-900 dark:hover:bg-gray-800 dark:border-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
-                >
-                  Retry
-                </button>
-              </div>
-
-              <ProgressSteps state={stageState} message={progressMsg} />
-
-              {error ? (
-                <div
-                  role="alert"
-                  className="text-sm text-red-700 bg-red-50 border border-red-200 rounded p-3"
-                >
-                  {error}
-                </div>
-              ) : null}
-
-              {selectedSessionId ? (
-                <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300 flex-wrap">
-                  <div>
-                    Session: <span className="font-mono">{selectedSessionId}</span>
-                  </div>
-
-                  <button
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <div className="flex items-center rounded-lg border border-border bg-muted/50 p-0.5 shadow-sm">
+                  <Button
                     type="button"
-                    className="px-2 py-1 rounded border bg-white hover:bg-gray-50 dark:bg-gray-900 dark:hover:bg-gray-800 dark:border-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+                    variant="ghost"
+                    size="sm"
+                    disabled={!selectedSessionId}
+                    className="h-9 gap-1.5 px-3 text-xs font-semibold transition motion-safe:hover:-translate-y-0.5 motion-safe:hover:shadow-soft"
                     onClick={async () => {
                       try {
-                        const url = window.location.href
-                        await copyToClipboard(url)
-                        setCopyNotice('Copied link')
-                        window.setTimeout(() => setCopyNotice(null), 1500)
+                        await copyToClipboard(window.location.href)
+                        toast.success('Copied link')
                       } catch {
-                        setCopyNotice('Copy failed')
-                        window.setTimeout(() => setCopyNotice(null), 1500)
+                        toast.error('Copy failed')
                       }
                     }}
                   >
-                    Copy link
-                  </button>
+                    <Link2 className="h-4 w-4 shrink-0" />
+                    <span className="hidden sm:inline">Copy</span>
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={!current}
+                    className="h-9 gap-1.5 px-3 text-xs font-semibold transition motion-safe:hover:-translate-y-0.5 motion-safe:hover:shadow-soft"
+                    onClick={() => {
+                      if (!current) return
+                      const md = buildExportMarkdown(current)
+                      const safe = (current.query || 'report').slice(0, 60).replace(/[^\w\- ]+/g, '')
+                      downloadText(`mara-${safe}.md`, md)
+                      toast.success('Exported report')
+                    }}
+                  >
+                    <Download className="h-4 w-4 shrink-0" />
+                    <span className="hidden sm:inline">Export</span>
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={!lastRunQuery || loading || routeLoading}
+                    className="h-9 gap-1.5 px-3 text-xs font-semibold transition motion-safe:hover:-translate-y-0.5 motion-safe:hover:shadow-soft"
+                    onClick={() => void onRetry()}
+                  >
+                    <RotateCcw className="h-4 w-4 shrink-0" />
+                    <span className="hidden sm:inline">Retry</span>
+                  </Button>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="md:hidden"
+                  onClick={() => setMobileHistoryOpen(true)}
+                  aria-label="Open history"
+                >
+                  <Menu className="h-4 w-4" />
+                </Button>
+                <ThemeToggle mode={theme} onChange={setTheme} />
+              </div>
+            </div>
+          </div>
 
-                  {copyNotice ? (
-                    <span className="text-[11px] px-2 py-1 rounded bg-green-50 text-green-800 border border-green-200 dark:bg-green-950 dark:text-green-200 dark:border-green-900">
-                      {copyNotice}
-                    </span>
-                  ) : null}
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <div className="mx-auto max-w-6xl space-y-4 p-4 pb-12 md:space-y-5 md:p-6">
+              <p className="animate-in fade-in-0 text-sm text-muted-foreground duration-500">
+                Publishable research reports with citations, sources, and fact-checks.
+              </p>
+
+              <Card className="animate-in fade-in-0 slide-in-from-bottom-1 border-border/80 shadow-soft transition motion-safe:hover:shadow-md motion-safe:hover:-translate-y-0.5 duration-300">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">New research</CardTitle>
+                  <CardDescription>Ask a question — we plan, search, summarize, and fact-check.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-stretch">
+                    <Input
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') void onResearch()
+                      }}
+                      placeholder="Ask a research question…"
+                      className="lg:flex-1"
+                      aria-label="Research question"
+                    />
+                    <Button
+                      type="button"
+                      className="h-10 shrink-0 px-6 font-bold shadow-soft transition motion-safe:hover:-translate-y-0.5 motion-safe:hover:shadow-md"
+                      onClick={() => void onResearch()}
+                      disabled={loading || routeLoading}
+                    >
+                      {loading ? 'Researching…' : 'Research'}
+                    </Button>
+                  </div>
+                  <ProgressSteps state={stageState} message={progressMsg} />
+                </CardContent>
+                {selectedSessionId ? (
+                  <CardFooter className="flex flex-wrap gap-2 border-t border-border/60 bg-muted/20 text-xs text-muted-foreground">
+                    <span className="font-mono text-[11px] text-foreground/80">{selectedSessionId}</span>
+                  </CardFooter>
+                ) : null}
+              </Card>
+
+              <Routes>
+                <Route
+                  path="/sessions/:id"
+                  element={
+                    <SessionLoader
+                      onLoaded={handleSessionLoaded}
+                      onLoadingChange={setRouteLoading}
+                      onError={(msg) => setError(msg)}
+                    />
+                  }
+                />
+                <Route path="/" element={null} />
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+
+              {error ? (
+                <Card
+                  role="alert"
+                  className="animate-in fade-in-0 border-destructive/50 bg-destructive/5 duration-300"
+                >
+                  <CardContent className="pt-6 text-sm text-destructive">{error}</CardContent>
+                </Card>
+              ) : null}
+
+              {loading || routeLoading ? (
+                <Card className="animate-in fade-in-0 duration-300">
+                  <CardHeader>
+                    <CardTitle>Loading…</CardTitle>
+                    <CardDescription>Fetching session and report.</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <SkeletonBlock lines={7} />
+                  </CardContent>
+                </Card>
+              ) : !hasResult ? (
+                <Card className="animate-in fade-in-0 border-dashed border-border duration-500">
+                  <CardHeader>
+                    <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                      <Sparkles className="h-6 w-6" />
+                    </div>
+                    <CardTitle className="text-lg">Start a research run</CardTitle>
+                    <CardDescription>
+                      Run a query below, pick a session from history, or open a shareable link like{' '}
+                      <span className="font-mono text-foreground/90">/sessions/&lt;id&gt;</span>.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Try</p>
+                    <div className="flex flex-col gap-2">
+                      {EXAMPLE_PROMPTS.map((p) => (
+                        <Button
+                          key={p}
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-auto justify-start whitespace-normal py-2 text-left text-xs font-medium transition motion-safe:hover:-translate-y-0.5 motion-safe:hover:shadow-soft"
+                          onClick={() => {
+                            setQuery(p)
+                            setLastRunQuery(p)
+                          }}
+                        >
+                          {p}
+                        </Button>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              ) : null}
+
+              {current?.needs_clarification ? (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Clarifying questions</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <ul className="list-disc space-y-1 pl-5 text-sm">
+                      {current.clarifying_questions.map((q, i) => (
+                        <li key={i}>{q}</li>
+                      ))}
+                    </ul>
+                  </CardContent>
+                </Card>
+              ) : null}
+
+              {showReport ? (
+                <div className="animate-in fade-in-0 grid min-w-0 grid-cols-1 gap-4 duration-500 lg:grid-cols-[1fr_320px] lg:gap-5">
+                  <div className="min-w-0 space-y-4">
+                    <Card className="overflow-hidden border-border/80 shadow-soft transition motion-safe:hover:shadow-md">
+                      <CardHeader className="border-b border-border/60 bg-gradient-to-br from-primary/[0.06] to-transparent pb-4">
+                        <div className="flex flex-wrap items-center gap-2">
+                          {selectedSession ? (
+                            <>
+                              <Badge variant="secondary" className="font-semibold capitalize">
+                                {selectedSession.status}
+                              </Badge>
+                              {formatSessionWhen(selectedSession.created_at) ? (
+                                <Badge variant="outline" className="font-normal tabular-nums">
+                                  {formatSessionWhen(selectedSession.created_at)}
+                                </Badge>
+                              ) : null}
+                            </>
+                          ) : (
+                            <Badge variant="outline">Session</Badge>
+                          )}
+                        </div>
+                        <CardTitle className="pt-2 text-2xl font-bold leading-tight tracking-tight text-foreground">
+                          {current.query}
+                        </CardTitle>
+                        <CardDescription className="text-base font-medium text-muted-foreground">
+                          Research question
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent className="pt-6">
+                        <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-muted-foreground">
+                          Summary
+                        </h2>
+                        <MarkdownView
+                          markdown={current.summary_markdown!}
+                          getSourceById={(id) => sourcesById.get(id)}
+                          onOpenSource={(id) => setDrawerSourceId(id)}
+                        />
+                      </CardContent>
+                    </Card>
+
+                    <div className="grid min-w-0 grid-cols-1 gap-4 md:grid-cols-2 md:gap-4">
+                      <Collapsible defaultOpen className="group">
+                        <Card className="overflow-hidden border-border/80 shadow-soft transition motion-safe:hover:-translate-y-0.5 motion-safe:hover:shadow-md">
+                          <CollapsibleTrigger asChild>
+                            <button
+                              type="button"
+                              className="flex w-full items-center justify-between border-b border-border/60 bg-muted/25 px-5 py-4 text-left transition hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            >
+                              <span className="text-sm font-bold tracking-tight">Sources</span>
+                              <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-180" />
+                            </button>
+                          </CollapsibleTrigger>
+                          <CollapsibleContent>
+                            <CardContent className="pt-4">
+                              <SourcesPanel
+                                sources={current.sources ?? []}
+                                highlightSourcesId={highlightSourceId}
+                                onOpenSource={(id) => setDrawerSourceId(id)}
+                              />
+                            </CardContent>
+                          </CollapsibleContent>
+                        </Card>
+                      </Collapsible>
+
+                      <Collapsible defaultOpen className="group">
+                        <Card className="overflow-hidden border-border/80 shadow-soft transition motion-safe:hover:-translate-y-0.5 motion-safe:hover:shadow-md">
+                          <CollapsibleTrigger asChild>
+                            <button
+                              type="button"
+                              className="flex w-full items-center justify-between border-b border-border/60 bg-muted/25 px-5 py-4 text-left transition hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            >
+                              <span className="text-sm font-bold tracking-tight">Fact checks</span>
+                              <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-180" />
+                            </button>
+                          </CollapsibleTrigger>
+                          <CollapsibleContent>
+                            <CardContent className="pt-4">
+                              <FactChecksPanel checks={current.fact_checks ?? []} />
+                            </CardContent>
+                          </CollapsibleContent>
+                        </Card>
+                      </Collapsible>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4 lg:sticky lg:top-[4.5rem] lg:self-start">
+                    <Card className="shadow-soft transition motion-safe:hover:shadow-md">
+                      <CardContent className="pt-5">
+                        <TableOfContents markdown={current.summary_markdown!} />
+                      </CardContent>
+                    </Card>
+                    <QualityPanel sources={current.sources ?? []} checks={current.fact_checks ?? []} />
+                    <Card className="border border-dashed border-border/70 bg-muted/20 shadow-none">
+                      <CardContent className="py-4 text-xs text-muted-foreground">
+                        Tip: hover citations for a preview, click to open the source drawer.
+                      </CardContent>
+                    </Card>
+                  </div>
                 </div>
               ) : null}
-            </section>
-
-            {/* Route-side effect: when URL is /sessions/:id, load session and populate report */}
-            <Routes>
-              <Route
-                path="/sessions/:id"
-                element={
-                  <SessionLoader
-                    onLoaded={handleSessionLoaded}
-                    onLoadingChange={setRouteLoading}
-                    onError={(msg) => setError(msg)}
-                  />
-                }
-              />
-              <Route path="/" element={null} />
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
-
-            {loading || routeLoading ? (
-              <div className="border rounded bg-white dark:bg-gray-900 dark:border-gray-800 p-4">
-                <div className="font-semibold mb-2">Loading…</div>
-                <SkeletonBlock lines={7} />
-              </div>
-            ) : !hasResult ? (
-              <div className="text-sm text-gray-600 dark:text-gray-300">
-                Run a query, or open a shareable session link like <span className="font-mono">/sessions/&lt;id&gt;</span>.
-              </div>
-            ) : null}
-
-            {current?.needs_clarification ? (
-              <section className="border rounded bg-white dark:bg-gray-900 dark:border-gray-800 p-4">
-                <div className="font-semibold">Clarifying questions</div>
-                <ul className="list-disc pl-6 mt-2 text-sm">
-                  {current.clarifying_questions.map((q, i) => (
-                    <li key={i}>{q}</li>
-                  ))}
-                </ul>
-              </section>
-            ) : null}
-
-            {showReport ? (
-              <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4 min-w-0">
-                {/* Main report column */}
-                <div className="space-y-4 min-w-0">
-                  <section className="border rounded bg-white dark:bg-gray-900 dark:border-gray-800 p-4">
-                    <div className="space-y-1">
-                      <div className="text-xs text-gray-600 dark:text-gray-300">Question</div>
-                      <div className="text-base font-semibold">{current.query}</div>
-                    </div>
-
-                    <div className="mt-4">
-                      <div className="font-semibold mb-2">Summary</div>
-                      <MarkdownView
-                        markdown={current.summary_markdown!}
-                        getSourceById={(id) => sourcesById.get(id)}
-                        onOpenSource={(id) => setDrawerSourceId(id)}
-                      />
-                    </div>
-                  </section>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 min-w-0">
-                    <section className="border rounded bg-white dark:bg-gray-900 dark:border-gray-800 p-4 min-w-0">
-                      <div className="font-semibold mb-2">Sources</div>
-                      <SourcesPanel
-                        sources={current.sources ?? []}
-                        highlightSourcesId={highlightSourceId}
-                        onOpenSource={(id) => setDrawerSourceId(id)}
-                      />
-                    </section>
-
-                    <section className="border rounded bg-white dark:bg-gray-900 dark:border-gray-800 p-4 min-w-0">
-                      <div className="font-semibold mb-2">Fact checks</div>
-                      <FactChecksPanel checks={current.fact_checks ?? []} />
-                    </section>
-                  </div>
-                </div>
-
-                {/* Sidebar */}
-                <div className="space-y-4 lg:sticky lg:top-4 self-start">
-                  <TableOfContents markdown={current.summary_markdown!} />
-                  <QualityPanel sources={current.sources ?? []} checks={current.fact_checks ?? []} />
-                  <div className="border rounded bg-white dark:bg-gray-900 dark:border-gray-800 p-3 text-xs text-gray-600 dark:text-gray-300">
-                    Tip: hover citations for a preview, click to open the source drawer.
-                  </div>
-                </div>
-              </div>
-            ) : null}
+            </div>
           </div>
         </main>
       </div>
