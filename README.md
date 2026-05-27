@@ -7,19 +7,21 @@ A full-stack application that turns a natural-language research question into a 
 ## Table of contents
 
 1. [Features](#features)  
-2. [Architecture](#architecture)  
-3. [Tech stack](#tech-stack)  
-4. [Prerequisites](#prerequisites)  
-5. [Quick start (local)](#quick-start-local)  
-6. [Run with Docker](#run-with-docker)  
-7. [Configuration](#configuration)  
-8. [API reference](#api-reference)  
-9. [Research pipeline](#research-pipeline)  
-10. [Frontend](#frontend)  
-11. [Testing](#testing)  
-12. [Project layout](#project-layout)  
-13. [Troubleshooting](#troubleshooting)  
-14. [License](#license)
+2. [Screenshots](#screenshots)  
+3. [Architecture](#architecture)  
+4. [Tech stack](#tech-stack)  
+5. [Prerequisites](#prerequisites)  
+6. [Quick start (local)](#quick-start-local)  
+7. [Run with Docker](#run-with-docker)  
+8. [Configuration](#configuration)  
+9. [API reference](#api-reference)  
+10. [Research pipeline](#research-pipeline)  
+11. [Frontend](#frontend)  
+12. [Testing](#testing)  
+13. [Project layout](#project-layout)  
+14. [Troubleshooting](#troubleshooting)  
+15. [Future work](#future-work)  
+16. [License](#license)
 
 ---
 
@@ -32,6 +34,26 @@ A full-stack application that turns a natural-language research question into a 
 - **Persistence** — Sessions, agent steps, sources, and fact checks stored in Postgres; reload via `/sessions/:id`.  
 - **Streaming UI** — `EventSource` SSE for live progress and final payload.  
 - **Web UI** — React + Vite + Tailwind; markdown rendering, TOC, quality heuristics, collapsible sources/fact checks, sheets for source detail and mobile history, Sonner toasts.
+
+---
+
+## Screenshots
+
+### Hero report overview
+
+![Hero report overview](images/4.png)
+
+### Evidence Explorer (citation preview)
+
+![Evidence Explorer — citation preview](images/1.png)
+
+### Sources + Fact checks detail
+
+![Sources and fact checks detail](images/5.png)
+
+### Landing / New research + History
+
+![Landing page — new research and history](images/2.png)
 
 ---
 
@@ -342,6 +364,7 @@ multi-agent-research-assistant/
 ├── .env.example              # Template for secrets and config
 ├── docker-compose.yml        # db + backend + frontend (+ optional ollama profile)
 ├── README.md                 # This file
+├── images/                   # UI screenshots for README
 ├── backend/
 │   ├── Dockerfile
 │   ├── alembic/              # Migrations
@@ -379,6 +402,18 @@ multi-agent-research-assistant/
 | Low “extraction coverage” in UI | Heuristic: fraction of sources with `extracted_text`. Many sites block scraping or return little text; not necessarily an LLM failure. |
 | Ollama errors | `OLLAMA_BASE_URL` must be OpenAI-compatible (`/v1`); model name must exist (`ollama list`). |
 | Groq 4xx/5xx | Invalid or missing `GROQ_API_KEY`; model strings must match Groq’s model IDs. |
+
+---
+
+## Future work
+
+Planned improvements for maximum impact without exploding scope:
+
+1. **Add Tavily (or SearXNG) as a second search option + caching.**
+2. **Add chunk selection/reranking before summarization** (quality boost).
+3. **Add token streaming summarizer to UI** (wow factor).
+4. **Add collections/tags + search history** (full-stack CRUD).
+5. **Add E2E Playwright test + badge in README.**
 
 ---
 
