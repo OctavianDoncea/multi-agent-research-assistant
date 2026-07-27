@@ -1,7 +1,15 @@
 import type { ProgressEvent, ResearchResponse, SessionDetail, SessionListItem } from './types'
 
+/** Empty in local Vite (proxy); set on Vercel to the Render backend origin. */
+const API_BASE_URL = String(import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '')
+
+function apiUrl(path: string): string {
+    return `${API_BASE_URL}${path}`
+}
+
 async function apiGet<T>(path: string): Promise<T> {
-    const res = await fetch(path)
+    const url = apiUrl(path)
+    const res = await fetch(url)
     if (!res.ok) throw new Error(`GET ${path} failed: ${res.status}`)
     return (await res.json()) as T
 }
@@ -24,7 +32,7 @@ export function researchStream(
         onNetworkError: () => void
     }
 ): () => void {
-    const url = `/api/research/stream?query=${encodeURIComponent(query)}`
+    const url = apiUrl(`/api/research/stream?query=${encodeURIComponent(query)}`)
     const es = new EventSource(url)
 
     es.addEventListener('session', (e) => {

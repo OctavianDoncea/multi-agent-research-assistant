@@ -26,7 +26,12 @@ async def run_migrations_online():
     configuration = config.get_section(config.config_ini_section) or {}
     # Must keep +asyncpg: async_engine_from_config requires an async driver.
     configuration["sqlalchemy.url"] = settings.database_url
-    connectable = async_engine_from_config(configuration, prefix='sqlalchemy.', poolclass=pool.NullPool)
+    connectable = async_engine_from_config(
+        configuration,
+        prefix='sqlalchemy.',
+        poolclass=pool.NullPool,
+        connect_args=settings.db_connect_args,
+    )
 
     async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)

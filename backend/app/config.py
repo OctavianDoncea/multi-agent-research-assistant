@@ -54,6 +54,7 @@ class Settings:
     db_host: str = os.getenv('POSTGRES_HOST', 'localhost')
     db_port: int = int(os.getenv('POSTGRES_PORT', '5432'))
     database_url_override: str | None = os.getenv('DATABASE_URL')
+    db_ssl: str = os.getenv('DB_SSL', 'disable')
 
     @property
     def database_url(self) -> str:
@@ -70,5 +71,13 @@ class Settings:
         return (
             f"postgresql+asyncpg://{user}:{password}@{self.db_host}:{self.db_port}/{self.db_name}"
         )
+
+    @property
+    def db_connect_args(self) -> dict:
+        if self.db_ssl.lower() != 'require':
+            return {}
+        import ssl
+
+        return {'ssl': ssl.create_default_context()}
 
 settings = Settings()
