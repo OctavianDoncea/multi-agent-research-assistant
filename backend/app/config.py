@@ -31,8 +31,11 @@ class Settings:
     ollama_api_key: str = os.getenv('OLLAMA_API_KEY', 'ollama')
     ollama_model: str = os.getenv('OLLAMA_MODEL', 'llama3.1')
 
-    # Search
+    # Search providers
     search_provider: str = os.getenv('SEARCH_PROVIDER', 'duckduckgo')
+    search_provider_fallback: str = os.getenv('SEARCH_FALLBACK_PROVIDER', 'duckduckgo')
+    tavily_api_key: str | None = os.getenv('TAVILY_API_KEY')
+    searxng_base_url: str | None = os.getenv('SEARXNG_BASE_URL')
     max_subquestions: int = int(os.getenv('MAX_SUBQUESTIONS', '3'))
     max_search_result: int = int(os.getenv('MAX_SEARCH_RESULTS', '6'))
     max_pages_per_subquestion: int = int(os.getenv('MAX_PAGES_PER_SUBQUESTION', '2'))
@@ -40,6 +43,17 @@ class Settings:
     # Extraction / prompt budgeting
     max_chars_per_page: int = int(os.getenv('MAX_CHARS_PER_PAGE', '8000'))
     max_total_source_chars: int = int(os.getenv('MAX_TOTAL_SOURCE_CHARS', '24000'))
+
+    # Extraction cache
+    enable_extraction_cache: bool = os.getenv('ENABLE_EXTRACTION_CACHE', 'true').lower() in ('1', 'true', 'yes', 'y')
+    extract_cache_ttl_hours: int = int(os.getenv('EXTRACT_CACHE_TTL_HOURS', '168'))
+    extract_cache_ttl_failure_hours: int = int(os.getenv('EXTRACT_CACHE_TTL_FAILURE_HOURS', '12'))
+
+    # Reranking / chunking
+    chunk_size: int = int(os.getenv('CHUNK_SIZE', '900'))
+    chunk_overlap: int = int(os.getenv('CHUNK_OVERLAP', '120'))
+    top_chunks_per_source: int = int(os.getenv('TOP_CHUNKS_PER_SOURCE', '2'))
+    max_sources_for_summary: int = int(os.getenv('MAX_SOURCES_FOR_SUMMARY', '10'))
 
     cors_origins: list[str] = field(
         default_factory=lambda: _split_csv(
