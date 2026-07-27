@@ -47,11 +47,11 @@ async def db_clean(apply_migrations):
     from app.db.session import AsyncSessionLocal
 
     async with AsyncSessionLocal() as s:
-        await s.execute(text('TRUNCATE fact_checks, sources, agent_steps, research_sessions RESTART IDENTITY CASCADE;'))
+        await s.execute(text('TRUNCATE web_page_cache, fact_checks, sources, agent_steps, research_sessions RESTART IDENTITY CASCADE;'))
         await s.commit()
     yield
     async with AsyncSessionLocal() as s:
-        await s.execute(text('TRUNCATE fact_checks, sources, agent_steps, research_sessions RESTART IDENTITY CASCADE;'))
+        await s.execute(text('TRUNCATE web_page_cache, fact_checks, sources, agent_steps, research_sessions RESTART IDENTITY CASCADE;'))
         await s.commit()
 
 
