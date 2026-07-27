@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime, timezone
 from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.db.models import ResearchSession, AgentStep, Source, FactCheck
+from app.db.models import ResearchSession, AgentStep, Source, FactCheck, WebPageCache
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
@@ -60,3 +60,18 @@ async def get_session_sources(db: AsyncSession, session_id: uuid.UUID) -> list[S
 async def get_session_fact_checks(db: AsyncSession, session_id: uuid.UUID) -> list[FactCheck]:
     res = await db.execute(select(FactCheck).where(FactCheck.session_id==session_id))
     return list(res.scalars().all())
+
+async def get_cached_page(db: AsyncSession, url: str) -> WebPageCache | None:
+    res = await db.execute(select(WebPageCache).where(WebPageCache.url==url))
+    return res.scalar_one_or_none()
+
+async def upsert_cached_page(db: AsyncSession, *, url: str, status_code: int | None, context_text: str | None, error: str | None) -> None:
+    existing = await get_cached_page(db, url)
+    if existing:
+        existing.status_code = status_code
+        existing.context_text = context_text
+        existing.error = error
+        existing.fetched_at = utcnow()
+    else:
+        db.add(WebPageCache(url=url, status_code=status_code, context_text=context_text, error=error))
+    await db.commit()
