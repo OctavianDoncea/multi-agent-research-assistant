@@ -14,6 +14,7 @@ from app.agents.summarizer import run_summarizer
 from app.agents.fact_checker import run_fact_checker
 from app.db import crud
 from app.utils.summary_markdown import coerce_summary_markdown
+from app.utils.rerank import best_excerpts_for_text
 
 ProgressEmitter = Callable[[str, dict], Awaitable[None]]
 
@@ -39,32 +40,59 @@ async def _emit(emit: ProgressEmitter | None, *, stage: str, status: str, **extr
         return
     await emit('progress', {'stage': stage, 'status': status, **extra})
 
-def _pack_sources_for_llm(bundles: list[ResearchBundle]) -> list[tuple[str, str, str | None]]:
+def _pack_sources_for_llm(bundles: list[ResearchBundle], user_query: str) -> list[tuple[str, str, str | None]]:
     """
-    Returns list of (source_id, url, extracted_text) clipped to MAX_TOTAL_SOURCE_CHARS.
+    Returns list of (source_id, url, selected_excerpt) clipped to MAX_TOTAL_SOURCE_CHARS.
+    Uses chunking + reranking to select the most relevant excerpts.
     """
+    candidates: list[tuple[float, str, str, str]] = []
+
+    for b in bundles:
+        q = f'{user_query}\n{b.subquestion}'
+        for s in b.sources:
+            if not s.extracted_text:
+                continue
+            best = best_excerpts_for_text(
+                q,
+                s.extracted_text,
+                chunk_size=settings.chunk_size,
+                overlap=settings.chunk_overlap,
+                top_k=settings.top_k_per_source
+            )
+            for r in best:
+                candidates.append((r.score, s.source_id, s.url, r.excerpt))
+
+    by_source: dict[str, dict] = {}
+    for score, sid, url, excerpt in candidates:
+        entry = by_source.get(sid)
+        if not entry:
+            by_source[sid] = {'url': url, 'score': score, 'excerpt': [excerpt]}
+        else:
+            entry['score'] = max(entry['score'], score)
+            entry['excerpt'].append(excerpt)
+
+    ranked_sources = sorted(by_source.items(), key=lambda kv: kv[1]['score'], reverse=True)
+    ranked_sources = ranked_sources[: settings.max_sources_for_summary]
+
     packed: list[tuple[str, str, str | None]] = []
     total_chars = 0
 
-    all_sources = []
-    for b in bundles:
-        for s in b.sources:
-            all_sources.append(s)
-
-    all_sources.sort(key=lambda s: 0 if s.extracted_text else 1)
-
-    for s in all_sources:
-        if not s.extracted_text:
+    for sid, meta in ranked_sources:
+        url = meta['url']
+        excerpts = meta['excerpts'][: settings.top_chunks_per_source]
+        joined = '\n\n'.join(excerpts).strip()
+        if not joined:
             continue
+
         remaining = settings.max_total_source_chars - total_chars
         if remaining <= 0:
             break
-        clipped = truncate(s.extracted_text, min(len(s.extracted_text), remaining))
-        packed.append((s.source_id, s.url, clipped))
+
+        clipped = truncate(joined, min(len(joined), remaining))
+        packed.append((sid, url, clipped))
         total_chars += len(clipped)
 
     return packed
-
 
 async def _persist_step(db: AsyncSession | None, session_id: uuid.UUID | None, *, agent_name: str, input_obj: dict | None, output_obj: dict | None, duration_ms: int,
 ) -> None:
@@ -227,7 +255,7 @@ async def run_research_pipeline(
             )
 
         # If no extracted content, return message
-        packed_sources = _pack_sources_for_llm(bundles)
+        packed_sources = _pack_sources_for_llm(bundles, query)
         if not packed_sources:
             await _emit(emit, stage='summarizer', status='skipped_no_sources')
             if db and session_id:
