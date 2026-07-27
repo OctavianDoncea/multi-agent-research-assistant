@@ -4,10 +4,13 @@ import trafilatura
 import socket
 import ipaddress
 from dataclasses import dataclass
-from urllib.parse import urlparse, urljoin
 from typing import Optional
+from urllib.parse import urlparse, urljoin
+from datetime import datetime, timezone, timedelta
 from app.config import settings
 from app.utils.text import clean_text, truncate
+from app.db.session import AsyncSessionLocal
+from app.db import crud
 
 @dataclass
 class ExtractedPage:
@@ -15,10 +18,15 @@ class ExtractedPage:
     status_code: int | None
     title: Optional[str]
     text: Optional[str]
-    error: Optional[str]
+    error: Optional[str] = None
+
 
 class SSRFBlocked(ValueError):
     pass
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
 
 def _is_ip_public(ip: str) -> bool:
     addr = ipaddress.ip_address(ip)
@@ -26,7 +34,7 @@ def _is_ip_public(ip: str) -> bool:
 
 def _host_is_safe(host: str) -> bool:
     host = host.strip().lower()
-    if host in ("localhost",):
+    if host in ('localhost',):
         return False
 
     try:
@@ -45,25 +53,23 @@ def _host_is_safe(host: str) -> bool:
         return False
     return all(_is_ip_public(ip) for ip in ips)
 
-def _validate_url(url: str):
+def _validate_url(url: str) -> None:
     p = urlparse(url)
     if p.scheme not in ('http', 'https'):
         raise SSRFBlocked(f'Blocked non-http(s) URL scheme: {p.scheme}')
     if not p.hostname:
-        raise SSRFBlocked('Blocked URL with no hostname')
+        raise SSRFBlocked(f'Blocked URL with no hostname')
     if p.username or p.password:
-        raise SSRFBlocked('Blocked URL with userinfo')
+        raise SSRFBlocked(f'Blocked URL with userinfo')
     if not _host_is_safe(p.hostname):
         raise SSRFBlocked(f'Blocked unsafe host: {p.hostname}')
 
-async def _get_with_safe_redirects(client: httpx.AsyncClient, url: str, *, timeout_s: float, max_redirects: int= 5) -> httpx.Response:
+async def _get_with_safe_redirects(client: httpx.AsyncClient, url: str, *, timeout_s: float, max_redirects: int = 5) -> httpx.Response:
     current = url
-
     for _ in range(max_redirects + 1):
         _validate_url(current)
         resp = await client.get(current)
-
-        if resp.status_code in (301, 301, 303, 307, 308):
+        if resp.status_code in (301, 302, 303, 307, 308):
             loc = resp.headers.get('location')
             if not loc:
                 return resp
@@ -72,31 +78,66 @@ async def _get_with_safe_redirects(client: httpx.AsyncClient, url: str, *, timeo
         return resp
     return resp
 
-async def fetch_and_extract(url: str, timeout_s: float = 15.0) -> ExtractedPage:
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (compatible; MARA/1.0; +https://example.com/bot)'
-    }
+def _cache_valid(fetched_at: datetime, *, ok: bool) -> bool:
+    ttl = settings.extract_cache_ttl_hours if ok else settings.extract_cache_ttl_failure_hours
+    return (_utcnow() - fetched_at) <= timedelta(hours=ttl)
 
+async def _try_cache(url: str) -> ExtractedPage | None:
+    if not settings.enable_extraction_cache:
+        return None
+    async with AsyncSessionLocal() as db:
+        row = await crud.get_cached_page(db, url)
+        if not row:
+            return None
+        ok = bool(row.content_text)
+        if not _cache_valid(row.fetched_at, ok=ok):
+            return None
+        if row.content_text:
+            return ExtractedPage(url=url, status_code=row.status_code, title=row.title, text=row.content_text)
+        return ExtractedPage(url=url, status_code=row.status_code, title=None, text=None, error=row.error or 'Cached error')
+
+async def _write_cache(url: str, status_code: int | None, text: str | None, error: str | None) -> None:
+    if not settings.enable_extraction_cache:
+        return
+    async with AsyncSessionLocal() as db:
+        await crud.upsert_cached_page(db, url=url, status_code=status_code, context_text=text, error=error)
+
+async def fetch_and_extract(url: str, timeout_s: float = 15.0) -> ExtractedPage:
+    cached = await _try_cache(url)
+    if cached:
+        return cached
+
+    headers = {'User-Agent': 'Mozilla/5.0 (compatible; MARA/1.0; +https://example.com/bot)'}
     try:
         async with httpx.AsyncClient(follow_redirects=False, timeout=timeout_s, headers=headers) as client:
             resp = await _get_with_safe_redirects(client, url, timeout_s=timeout_s)
             status = resp.status_code
 
             if status >= 400:
-                return ExtractedPage(url=url, status_code=status, title=None, text=None, error=f'HTTP {status}')
+                out = ExtractedPage(url=url, status_code=status, title=None, text=None, error=f'HTTP {status}')
+                await _write_cache(url, status, None, out.error)
+                return out
 
             html = resp.text
             extracted = trafilatura.extract(html, include_comments=False, include_tables=False)
-            
             if not extracted:
-                return ExtractedPage(url=url, status_code=status, title=None, text=None, error='Empty extraction')
+                out = ExtractedPage(url=url, status_code=status, title=None, text=None, error='No text extracted')
+                await _write_cache(url, status, None, out.error)
+                return out
 
             text = truncate(clean_text(extracted), settings.max_chars_per_page)
-            return ExtractedPage(url=url, status_code=status, title=None, text=text, error=None)
+            out = ExtractedPage(url=url, status_code=status, title=None, text=text, error=None)
+            await _write_cache(url, status, text, None)
+            return out
+
     except SSRFBlocked as e:
-        return ExtractedPage(url=url, status_code=None, title=None, text=None, error=f'SSRF blocked: {e}')
+        out = ExtractedPage(url=url, status_code=None, title=None, text=None, error=f'SSRF blocked: {e}')
+        await _write_cache(url, None, None, out.error)
+        return out
     except Exception as e:
-        return ExtractedPage(url=url, status_code=None, title=None, text=None, error=str(e))
+        out = ExtractedPage(url=url, status_code=None, title=None, text=None, error=str(e))
+        await _write_cache(url, None, None, out.error)
+        return out
 
 async def extract_many(urls: list[str], concurrency: int = 5) -> list[ExtractedPage]:
     sem = asyncio.Semaphore(concurrency)
@@ -104,5 +145,5 @@ async def extract_many(urls: list[str], concurrency: int = 5) -> list[ExtractedP
     async def _wrapped(u: str) -> ExtractedPage:
         async with sem:
             return await fetch_and_extract(u)
-    
+
     return await asyncio.gather(*[_wrapped(u) for u in urls])
