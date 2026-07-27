@@ -65,3 +65,14 @@ class FactCheck(Base):
 
 
     session: Mapped['ResearchSession'] = relationship(back_populates='fact_checks')
+
+
+class WebPageCache(Base):
+    __tablename__ = 'web_page_cache'
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    url: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    status_code: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    context_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
