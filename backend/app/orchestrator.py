@@ -57,7 +57,7 @@ def _pack_sources_for_llm(bundles: list[ResearchBundle], user_query: str) -> lis
                 s.extracted_text,
                 chunk_size=settings.chunk_size,
                 overlap=settings.chunk_overlap,
-                top_k=settings.top_k_per_source
+                top_k=settings.top_chunks_per_source,
             )
             for r in best:
                 candidates.append((r.score, s.source_id, s.url, r.excerpt))
@@ -66,10 +66,10 @@ def _pack_sources_for_llm(bundles: list[ResearchBundle], user_query: str) -> lis
     for score, sid, url, excerpt in candidates:
         entry = by_source.get(sid)
         if not entry:
-            by_source[sid] = {'url': url, 'score': score, 'excerpt': [excerpt]}
+            by_source[sid] = {'url': url, 'score': score, 'excerpts': [excerpt]}
         else:
             entry['score'] = max(entry['score'], score)
-            entry['excerpt'].append(excerpt)
+            entry['excerpts'].append(excerpt)
 
     ranked_sources = sorted(by_source.items(), key=lambda kv: kv[1]['score'], reverse=True)
     ranked_sources = ranked_sources[: settings.max_sources_for_summary]

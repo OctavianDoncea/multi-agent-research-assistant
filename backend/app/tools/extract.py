@@ -89,11 +89,11 @@ async def _try_cache(url: str) -> ExtractedPage | None:
         row = await crud.get_cached_page(db, url)
         if not row:
             return None
-        ok = bool(row.content_text)
+        ok = bool(row.context_text)
         if not _cache_valid(row.fetched_at, ok=ok):
             return None
-        if row.content_text:
-            return ExtractedPage(url=url, status_code=row.status_code, title=row.title, text=row.content_text)
+        if row.context_text:
+            return ExtractedPage(url=url, status_code=row.status_code, title=None, text=row.context_text)
         return ExtractedPage(url=url, status_code=row.status_code, title=None, text=None, error=row.error or 'Cached error')
 
 async def _write_cache(url: str, status_code: int | None, text: str | None, error: str | None) -> None:
