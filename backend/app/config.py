@@ -15,6 +15,18 @@ load_dotenv(_backend_dir / ".env", override=True)
 def _split_csv(s: str) -> list[str]:
     return [x.strip() for x in s.split(',') if x.strip()]
 
+def _normalize_async_database_url(url: str) -> str:
+    u = url.strip()
+    if u.startswith('postgres://'):
+        u = 'postgresql://' + u[len('postgres://'):]
+    if u.startswith('postgresql://'):
+        u = 'postgresql+asyncpg://' + u[len('postgresql://'):]
+    if '?' in u:
+        base, query = u.split('?', 1)
+        parts = [p for p in query.split('&') if p and not p.lower().startswith('sslmode=')]
+        u = f'{base}?{"&".join(parts)}' if parts else base
+    return u
+
 @dataclass(frozen=True)
 class Settings:
     # LLM routing
@@ -73,7 +85,7 @@ class Settings:
     @property
     def database_url(self) -> str:
         if self.database_url_override:
-            return self.database_url_override
+            return _normalize_async_database_url(self.database_url_override)
         if not self.db_password:
             raise ValueError(
                 "POSTGRES_PASSWORD is not set. Put it in your .env (not committed) "
