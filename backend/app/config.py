@@ -21,9 +21,17 @@ def _normalize_async_database_url(url: str) -> str:
         u = 'postgresql://' + u[len('postgres://'):]
     if u.startswith('postgresql://'):
         u = 'postgresql+asyncpg://' + u[len('postgresql://'):]
-    if '?' in u:
+    if u.startswith('postgresql+asyncpg://') and '?' in u:
         base, query = u.split('?', 1)
-        parts = [p for p in query.split('&') if p and not p.lower().startswith('sslmode=')]
+        drop = {'sslmode', 'channel_binding', 'sslrootcert', 'sslcert', 'sslkey'}
+        parts = []
+        for p in query.split('&'):
+            if not p:
+                continue
+            key = p.split('=', 1)[0].lower()
+            if key in drop:
+                continue
+            parts.append(p)
         u = f'{base}?{"&".join(parts)}' if parts else base
     return u
 
