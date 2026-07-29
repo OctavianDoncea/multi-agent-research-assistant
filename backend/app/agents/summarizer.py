@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from app.llm import LLMMEssage, llm_router
+from app.llm import LLMMessage, llm_router
 from app.utils.json_parser import JSONParseError, parse_json_lenient
 from app.config import settings
 
@@ -48,8 +48,8 @@ async def run_summarizer(user_query: str, packed_sources: list[tuple[str, str, s
         prefix = f'REPAIR TASK:\n{repair_instructions}\n\n'
 
     messages = [
-        LLMMEssage(role='system', content=SUMMARIZER_SYSTEM),
-        LLMMEssage(role='user', content=(
+        LLMMessage(role='system', content=SUMMARIZER_SYSTEM),
+        LLMMessage(role='user', content=(
             f'{prefix}'
             f'User question:\n{user_query}\n\n'
             f'{constraint_block}\n'
