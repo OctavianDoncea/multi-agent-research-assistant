@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from app.llm import LLMMEssage, llm_router
+from app.llm import LLMMessage, llm_router
 from app.utils.json_parser import parse_json_lenient
 from app.utils.text import clean_text
 from app.config import settings
@@ -27,8 +27,8 @@ Rules:
 
 async def run_planner(query: str, max_subquestions: int = 3) -> tuple[PlannerOutput, str]:
     messages = [
-        LLMMEssage(role='system', content=PLANNER_SYSTEM),
-        LLMMEssage(role='user', content=f'User question:\n{query}\n\nMax subquestions: {max_subquestions}')
+        LLMMessage(role='system', content=PLANNER_SYSTEM),
+        LLMMessage(role='user', content=f'User question:\n{query}\n\nMax subquestions: {max_subquestions}')
     ]
     text, provider = await llm_router.chat(messages, models={'groq': settings.groq_model_planner, 'ollama': settings.ollama_model} , temperature=0.1, max_tokens=500)
     data = parse_json_lenient(text)
