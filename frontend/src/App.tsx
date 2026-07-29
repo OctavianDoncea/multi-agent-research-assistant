@@ -227,6 +227,7 @@ export default function App() {
   const [current, setCurrent] = useState<ResearchResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [routeLoading, setRouteLoading] = useState(false)
+  const [streamSummary, setStreamSummary] = useState('')
 
   const [error, setError] = useState<string | null>(null)
 
@@ -305,6 +306,7 @@ export default function App() {
     setError(null)
     setLoading(true)
     setCurrent(null)
+    setStreamSummary('')
     setDrawerSourceId(null)
     setStageState(initialStageState)
     setProgressMsg(null)
@@ -317,11 +319,13 @@ export default function App() {
         navigate(`/sessions/${sessionId}`, { replace: true })
       },
       onProgress: (evt) => updateFromProgress(evt),
+      onSummaryDelta: (delta) => setStreamSummary((s) => s + delta),
       onFinal: async (data) => {
         setCurrent({
           ...data,
           summary_markdown: unwrapSummaryMarkdown(data.summary_markdown ?? undefined)
         })
+        setStreamSummary('')
         setLoading(false)
         setProgressMsg('done')
         if (data.session_id) {
@@ -384,6 +388,7 @@ export default function App() {
     setSelectedSessionId(detail.id)
 
     setCurrent(mapDetailToResearch(detail))
+    setStreamSummary('')
 
     setLoading(false)
     setProgressMsg('loaded from history')
@@ -558,7 +563,21 @@ export default function App() {
                 </Card>
               ) : null}
 
-              {loading || routeLoading ? (
+              {loading && streamSummary ? (
+                <Card className="animate-in fade-in-0 duration-300">
+                  <CardHeader>
+                    <CardTitle>Summary</CardTitle>
+                    <CardDescription>Streaming live answer…</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <MarkdownView
+                      markdown={streamSummary}
+                      getSourceById={(id) => sourcesById.get(id)}
+                      onOpenSource={(id) => setDrawerSourceId(id)}
+                    />
+                  </CardContent>
+                </Card>
+              ) : loading || routeLoading ? (
                 <Card className="animate-in fade-in-0 duration-300">
                   <CardHeader>
                     <CardTitle>Loading…</CardTitle>
