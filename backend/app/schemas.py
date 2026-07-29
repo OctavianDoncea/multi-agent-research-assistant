@@ -41,6 +41,9 @@ class ResearchResponse(BaseModel):
 class SessionListItem(BaseModel):
     id: uuid.UUID
     user_query: str
+    title: str | None = None
+    tags: list[str] = Field(default_factory=list)
+    pinned: bool = False
     status: str
     created_at: datetime
 
@@ -55,6 +58,9 @@ class SessionStep(BaseModel):
 class SessionDetail(BaseModel):
     id: uuid.UUID
     user_query: str
+    title: str | None = None
+    tags: list[str] = Field(default_factory=list)
+    pinned: bool = False
     status: str
     error: str | None = None
     created_at: datetime
@@ -62,3 +68,9 @@ class SessionDetail(BaseModel):
     sources: list[Source] = Field(default_factory=list)
     fact_checks: list[ClaimCheck] = Field(default_factory=list)
     summary_markdown: str | None = None
+
+
+class SessionUpdateRequest(BaseModel):
+    title: str | None = None
+    pinned: bool | None = None
+    tags: list[str] | None = None
