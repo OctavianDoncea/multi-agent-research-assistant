@@ -105,7 +105,7 @@ class LLMRouter:
                 model = self._model_for(name, models)
                 started = False
                 try:
-                    async for delta in p.stream.chat(model=model, messages=messages, temperature=temperature, max_tokens=max_tokens):
+                    async for delta in p.stream_chat(model=model, messages=messages, temperature=temperature, max_tokens=max_tokens):
                         if not started:
                             started = True
                             if provider_box is not None:
