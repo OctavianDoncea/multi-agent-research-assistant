@@ -1,7 +1,7 @@
 import re
 from pydantic import BaseModel, Field
 from typing import Literal
-from app.llm import LLMMEssage, llm_router
+from app.llm import LLMMessage, llm_router
 from app.utils.json_parser import JSONParseError, parse_json_lenient
 from app.config import settings
 
@@ -114,8 +114,8 @@ async def run_fact_checker(answer_markdown: str, packed_sources: list[tuple[str,
         f'SOURCE EXCERPTS:\n{_format_sources(packed_sources)}'
     )
     messages = [
-        LLMMEssage(role='system', content=FACTCHECK_SYSTEM),
-        LLMMEssage(role='user', content=user_content),
+        LLMMessage(role='system', content=FACTCHECK_SYSTEM),
+        LLMMessage(role='user', content=user_content),
     ]
     text, provider = await llm_router.chat(messages, models={'groq': settings.groq_model_factchecker, 'ollama': settings.ollama_model}, temperature=0.1, max_tokens=2400)
     cleaned = _strip_markdown_code_fence(text)
