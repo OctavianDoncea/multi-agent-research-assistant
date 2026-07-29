@@ -1,7 +1,8 @@
 from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, select, update, or_
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models import ResearchSession, AgentStep, Source, FactCheck, WebPageCache
 
@@ -44,9 +45,18 @@ async def get_session(db: AsyncSession, session_id: uuid.UUID) -> ResearchSessio
     return res.scalar_one_or_none()
 
 
-async def list_sessions(db: AsyncSession, limit: int = 50) -> list[ResearchSession]:
-    q = select(ResearchSession).order_by(ResearchSession.created_at.desc()).limit(limit)
-    res = await db.execute(q)
+async def list_sessions(db: AsyncSession, limit: int = 50, q: str | None = None, tag: str | None = None) -> list[ResearchSession]:
+    stmt = select(ResearchSession)
+
+    if q:
+        like = f'%{q}%'
+        stmt = stmt.where(or_(ResearchSession.user_query.ilike(like), ResearchSession.title.ilike(like)))
+
+    if tag:
+        stmt = stmt.where(ResearchSession.tags.contains([tag]))
+
+    stmt = stmt.order_by(ResearchSession.pinned.desc(), ResearchSession.created_at.desc()).limit(limit)
+    res = await db.execute(stmt)
     return list(res.scalars().all())
 
 async def get_session_steps(db: AsyncSession, session_id: uuid.UUID) -> list[AgentStep]:
@@ -74,4 +84,31 @@ async def upsert_cached_page(db: AsyncSession, *, url: str, status_code: int | N
         existing.fetched_at = utcnow()
     else:
         db.add(WebPageCache(url=url, status_code=status_code, context_text=context_text, error=error))
+    await db.commit()
+
+async def update_session_meta(db: AsyncSession, session_id: uuid.UUId, *, title: str | None = None, pinned: bool | None = None, tags: list[str] | None = None) -> None:
+    values = {'updated_at': utcnow()}
+
+    if title is not None:
+        values['title'] = title
+
+    if pinned is not None:
+        values['pinned'] = pinned
+
+    if tags is not None:
+        norm = []
+        seen = set()
+
+        for t in tags:
+            t = (t or '').strip()
+            if not t:
+                continue
+            key = t.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            norm.append(t)
+        values['tags'] = norm
+
+    await db.execute(update(ResearchSession).where(ResearchSession.id==session_id).values(**values))
     await db.commit()
