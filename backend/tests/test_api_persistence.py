@@ -50,7 +50,7 @@ async def test_research_persists_session_and_history(monkeypatch, fastapi_app):
 
     monkeypatch.setattr(orch, 'run_planner', fake_planner)
     monkeypatch.setattr(orch, 'run_researcher', fake_researcher)
-    monkeypatch.setattr(orch, 'run_summarizer', fake_summarizer)
+    monkeypatch.setattr(orch, 'run_summarizer_markdown', fake_summarizer)
     monkeypatch.setattr(orch, 'run_fact_checker', fake_fact_checker)
 
     transport = httpx.ASGITransport(app=fastapi_app)
