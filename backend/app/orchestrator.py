@@ -10,7 +10,7 @@ from app.utils.text import preview, truncate
 from app.utils.tokens import estimate_tokens
 from app.agents.planner import run_planner
 from app.agents.researcher import run_researcher, ResearchBundle
-from app.agents.summarizer import run_summarizer
+from app.agents.summarizer import run_summarizer_markdown, run_summarizer_markdown_stream
 from app.agents.fact_checker import run_fact_checker
 from app.db import crud
 from app.utils.summary_markdown import coerce_summary_markdown
@@ -278,12 +278,25 @@ async def run_research_pipeline(
 
         # 3) Summarizer
         await _emit(emit, stage='summarizer', status='start', sources=len(allowed_ids))
+
+        async def _emit_delta(d: str):
+            if emit:
+                await emit('summary_delta', {'delta': d})
+
         t2 = _now_ms()
-        summarizer_out, sum_provider = await run_summarizer(
-            query,
-            packed_sources,
-            allowed_source_ids=allowed_ids,
-        )
+        if emit:
+            summarizer_out, sum_provider = await run_summarizer_markdown_stream(
+                query,
+                packed_sources,
+                allowed_source_ids=allowed_ids,
+                emit_delta=_emit_delta,
+            )
+        else:
+            summarizer_out, sum_provider = await run_summarizer_markdown(
+                query,
+                packed_sources,
+                allowed_source_ids=allowed_ids,
+            )
         d2 = _now_ms() - t2
 
         debug_steps.append(
@@ -317,7 +330,7 @@ async def run_research_pipeline(
                 "Rewrite the answer_markdown to include citations using ONLY allowed IDs (e.g., [S1-1]). "
                 "Do not use [S1] or any IDs not in the allowed list. Ensure the main claims are cited."
             )
-            summarizer_out, sum_provider2 = await run_summarizer(
+            summarizer_out, sum_provider2 = await run_summarizer_markdown(
                 query,
                 packed_sources,
                 allowed_source_ids=allowed_ids,
@@ -340,6 +353,8 @@ async def run_research_pipeline(
                 output_obj=summarizer_out.model_dump(),
                 duration_ms=d2b,
             )
+            if emit:
+                await emit('summary_reset', {'summary': summarizer_out.answer_markdown})
         await _emit(emit, stage='summarizer', status='done')
 
         # 4) Fact-checker
