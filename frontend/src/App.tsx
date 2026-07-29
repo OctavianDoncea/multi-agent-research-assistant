@@ -2,12 +2,12 @@
 
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { ChevronDown, Download, Link2, Menu, RotateCcw, Sparkles } from 'lucide-react'
+import { ChevronDown, Download, Link2, Menu, RotateCcw, Sparkles, X } from 'lucide-react'
 import { toast } from 'sonner'
 
 import type { ProgressEvent, ResearchResponse, SessionDetail, SessionListItem, Source } from './types'
 import type { StageState } from './components/ProgressSteps'
-import { getSession, listSessions, researchStream } from './api'
+import { getSession, listSessions, patchSession, researchStream } from './api'
 
 import { HistorySidebar } from './components/HistorySidebar'
 import { MobileHistoryDrawer } from './components/MobileHistoryDrawer'
@@ -223,6 +223,9 @@ export default function App() {
 
   const [sessions, setSessions] = useState<SessionListItem[]>([])
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
+  const [historyQuery, setHistoryQuery] = useState('')
+  const [activeTags, setActiveTags] = useState<string[]>([])
+  const [tagDraft, setTagDraft] = useState('')
 
   const [current, setCurrent] = useState<ResearchResponse | null>(null)
   const [loading, setLoading] = useState(false)
@@ -258,14 +261,43 @@ export default function App() {
     [sessions, selectedSessionId]
   )
 
-  const refreshHistory = useCallback(async () => {
-    const s = await listSessions(50)
+  const refreshHistory = useCallback(async (q = '') => {
+    const s = await listSessions(50, q.trim() || undefined)
     setSessions(s)
   }, [])
 
   useEffect(() => {
-    refreshHistory().catch((e) => setError(String(e)))
-  }, [refreshHistory])
+    const t = window.setTimeout(() => {
+      refreshHistory(historyQuery).catch((e) => setError(String(e)))
+    }, 250)
+    return () => window.clearTimeout(t)
+  }, [historyQuery, refreshHistory])
+
+  async function persistTags(next: string[]) {
+    if (!selectedSessionId) return
+    const prev = activeTags
+    setActiveTags(next)
+    try {
+      await patchSession(selectedSessionId, { tags: next })
+      await refreshHistory(historyQuery)
+    } catch (e) {
+      setActiveTags(prev)
+      setError(String(e))
+      toast.error('Failed to update tags')
+    }
+  }
+
+  async function addTagFromDraft() {
+    const t = tagDraft.trim()
+    if (!t || !selectedSessionId) return
+    const key = t.toLowerCase()
+    if (activeTags.some((x) => x.toLowerCase() === key)) {
+      setTagDraft('')
+      return
+    }
+    setTagDraft('')
+    await persistTags([...activeTags, t])
+  }
 
   function updateFromProgress(evt: ProgressEvent) {
     const { stage, status } = evt
@@ -307,6 +339,8 @@ export default function App() {
     setLoading(true)
     setCurrent(null)
     setStreamSummary('')
+    setActiveTags([])
+    setTagDraft('')
     setDrawerSourceId(null)
     setStageState(initialStageState)
     setProgressMsg(null)
@@ -332,7 +366,7 @@ export default function App() {
           setSelectedSessionId(data.session_id)
           navigate(`/sessions/${data.session_id}`, { replace: true })
         }
-        await refreshHistory()
+        await refreshHistory(historyQuery)
       },
       onServerError: (message) => {
         setError(message)
@@ -374,11 +408,13 @@ export default function App() {
     if (item) {
       setQuery(item.user_query)
       setLastRunQuery(item.user_query)
+      setActiveTags(item.tags ?? [])
     }
 
     setSelectedSessionId(id)
     setError(null)
     setDrawerSourceId(null)
+    setTagDraft('')
     navigate(`/sessions/${id}`)
   }
 
@@ -389,6 +425,8 @@ export default function App() {
 
     setCurrent(mapDetailToResearch(detail))
     setStreamSummary('')
+    setActiveTags(detail.tags ?? [])
+    setTagDraft('')
 
     setLoading(false)
     setProgressMsg('loaded from history')
@@ -409,6 +447,8 @@ export default function App() {
         sessions={sessions}
         selectedId={selectedSessionId}
         onSelect={handleSelectSession}
+        searchQuery={historyQuery}
+        onSearchChange={setHistoryQuery}
       />
 
       <SourceDrawer
@@ -421,7 +461,13 @@ export default function App() {
 
       <div className="flex h-screen min-h-0">
         <aside className="hidden w-80 shrink-0 border-r border-border bg-card md:block">
-          <HistorySidebar sessions={sessions} selectedId={selectedSessionId} onSelect={handleSelectSession} />
+          <HistorySidebar
+            sessions={sessions}
+            selectedId={selectedSessionId}
+            onSelect={handleSelectSession}
+            searchQuery={historyQuery}
+            onSearchChange={setHistoryQuery}
+          />
         </aside>
 
         <main className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
@@ -664,6 +710,36 @@ export default function App() {
                         <CardDescription className="text-base font-medium text-muted-foreground">
                           Research question
                         </CardDescription>
+                        {selectedSessionId ? (
+                          <div className="flex flex-wrap items-center gap-2 pt-3">
+                            {activeTags.map((t) => (
+                              <Badge key={t} variant="secondary" className="gap-1 pr-1 font-medium">
+                                {t}
+                                <button
+                                  type="button"
+                                  className="rounded-sm p-0.5 hover:bg-muted"
+                                  aria-label={`Remove tag ${t}`}
+                                  onClick={() => void persistTags(activeTags.filter((x) => x !== t))}
+                                >
+                                  <X className="h-3 w-3" />
+                                </button>
+                              </Badge>
+                            ))}
+                            <Input
+                              value={tagDraft}
+                              onChange={(e) => setTagDraft(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault()
+                                  void addTagFromDraft()
+                                }
+                              }}
+                              placeholder="+ tag"
+                              aria-label="Add tag"
+                              className="h-8 w-28 text-xs"
+                            />
+                          </div>
+                        ) : null}
                       </CardHeader>
                       <CardContent className="pt-6">
                         <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-muted-foreground">

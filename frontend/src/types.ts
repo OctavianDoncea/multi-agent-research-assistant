@@ -37,6 +37,9 @@ export interface ResearchResponse {
 export interface SessionListItem {
     id: string
     user_query: string
+    title?: string | null
+    tags?: string[]
+    pinned?: boolean
     status: string
     created_at: string
 }
@@ -44,6 +47,9 @@ export interface SessionListItem {
 export interface SessionDetail {
     id: string
     user_query: string
+    title?: string | null
+    tags?: string[]
+    pinned?: boolean
     status: string
     error?: string | null
     created_at: string

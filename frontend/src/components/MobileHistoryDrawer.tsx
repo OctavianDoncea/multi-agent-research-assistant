@@ -10,13 +10,17 @@ export function MobileHistoryDrawer({
     onOpenChange,
     sessions,
     selectedId,
-    onSelect
+    onSelect,
+    searchQuery,
+    onSearchChange,
 }: {
     open: boolean
     onOpenChange: (v: boolean) => void
     sessions: SessionListItem[]
     selectedId: string | null
     onSelect: (id: string) => void
+    searchQuery: string
+    onSearchChange: (q: string) => void
 }) {
     return (
         <Sheet open={open} onOpenChange={onOpenChange}>
@@ -46,6 +50,8 @@ export function MobileHistoryDrawer({
                     <HistorySidebar
                         sessions={sessions}
                         selectedId={selectedId}
+                        searchQuery={searchQuery}
+                        onSearchChange={onSearchChange}
                         onSelect={(id) => {
                             onSelect(id)
                             onOpenChange(false)

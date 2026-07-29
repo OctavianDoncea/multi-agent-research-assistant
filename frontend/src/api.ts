@@ -14,12 +14,25 @@ async function apiGet<T>(path: string): Promise<T> {
     return (await res.json()) as T
 }
 
-export async function listSessions(limit = 50): Promise<SessionListItem[]> {
-    return apiGet(`/api/sessions?limit=${limit}`)
+export async function listSessions(limit = 50, q?: string, tag?: string): Promise<SessionListItem[]> {
+    const params = new URLSearchParams({ limit: String(limit) })
+    if (q) params.set('q', q)
+    if (tag) params.set('tag', tag)
+    return apiGet(`/api/sessions?${params.toString()}`)
 }
 
 export async function getSession(id: string): Promise<SessionDetail> {
     return apiGet(`/api/sessions/${id}`)
+}
+
+export async function patchSession(id: string, body: { title?: string | null; pinned?: boolean | null; tags?: string[] | null }) {
+    const res = await fetch(apiUrl(`/api/sessions/${id}`), {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    })
+    if (!res.ok) throw new Error(`PATCH /api/sessions/${id} failed: ${res.status}`)
+    return (await res.json()) as SessionDetail
 }
 
 export function researchStream(
