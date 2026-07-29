@@ -30,6 +30,7 @@ export function researchStream(
         onFinal: (data: ResearchResponse) => void
         onServerError: (message: string) => void
         onNetworkError: () => void
+        onSummaryDelta?: (delta: string) => void
     }
 ): () => void {
     const url = apiUrl(`/api/research/stream?query=${encodeURIComponent(query)}`)
@@ -73,6 +74,13 @@ export function researchStream(
         } finally {
             es.close()
         }
+    })
+
+    es.addEventListener('summary_delta', (e) => {
+        try {
+            const data = JSON.parse((e as MessageEvent).data) as { delta: string }
+            handlers.onSummaryDelta?.(data.delta)
+        } catch {}
     })
 
     es.onerror = () => {
