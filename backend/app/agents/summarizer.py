@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field
 from app.config import settings
 from app.llm import llm_router, LLMMessage
-from app.utils.text import clean_text
+from app.utils.text import clean_markdown
 
 class SummarizerOutput(BaseModel):
     answer_markdown: str
@@ -57,7 +57,7 @@ async def run_summarizer_markdown(user_query: str, packed_sources: list[str, str
         max_tokens=1600
     )
 
-    return SummarizerOutput(answer_markdown=clean_text(text)), provider
+    return SummarizerOutput(answer_markdown=clean_markdown(text)), provider
 
 async def run_summarizer_markdown_stream(user_query: str, packed_sources: list[tuple[str, str, str | None]], *, allowed_source_ids: list[str] | None = None, emit_delta=None) -> tuple[SummarizerOutput, str]:
     sources_block = _format_sources_for_prompt(packed_sources)
@@ -93,5 +93,5 @@ async def run_summarizer_markdown_stream(user_query: str, packed_sources: list[t
             await emit_delta(delta)
 
     provider = provider_box.get('name', settings.llm_primary)
-    text = clean_text(''.join(buf))
+    text = clean_markdown(''.join(buf))
     return SummarizerOutput(answer_markdown=text), provider
