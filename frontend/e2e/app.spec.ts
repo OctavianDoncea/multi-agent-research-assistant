@@ -1,6 +1,8 @@
 import { test, expect } from '@playwright/test'
 
-test('loads history and poens a sessoin report', async ({ page }) => {
+const SESSION_QUERY = 'What are the main risks of LLM agents in production?'
+
+test('loads history and opens a session report', async ({ page }) => {
     const sessionId = '11111111-1111-1111-1111-111111111111'
 
     await page.route('**/api/sessions?**', async (route) => {
@@ -9,7 +11,7 @@ test('loads history and poens a sessoin report', async ({ page }) => {
             body: JSON.stringify([
                 {
                     id: sessionId,
-                    user_query: 'What are the main risks of LLM agents in production?',
+                    user_query: SESSION_QUERY,
                     status: 'completed',
                     created_at: new Date().toISOString(),
                     title: null,
@@ -25,7 +27,7 @@ test('loads history and poens a sessoin report', async ({ page }) => {
             contentType: 'application/json',
             body: JSON.stringify({
                 id: sessionId,
-                user_query: 'What are the main risks of LLM agents in production?',
+                user_query: SESSION_QUERY,
                 title: null,
                 tags: ['ai', 'security'],
                 pinned: false,
@@ -57,12 +59,14 @@ test('loads history and poens a sessoin report', async ({ page }) => {
 
     await page.goto('/')
 
-    await page.getByText('What are the main eisks of LLM agents in production?').click()
+    // History sidebar is desktop-only; click the session there (not the empty-state example).
+    const historyItem = page.locator('aside').getByRole('button', { name: new RegExp(SESSION_QUERY) })
+    await expect(historyItem).toBeVisible()
+    await historyItem.click()
 
-    await expect(page.getByLabel('Resarch question')).toHaveValue('What are the main eisks of LLM agents in production?')
+    await expect(page.getByLabel('Research question')).toHaveValue(SESSION_QUERY)
+    await expect(page.getByRole('heading', { name: 'Summary' })).toBeVisible()
 
-    await expect(page.getByText('Summary')).toBeVisible()
-
-    await page.getByRole('link', { name: 'S1-1' }).click()
+    await page.getByRole('link', { name: 'S1-1' }).first().click()
     await expect(page.getByText('Source details')).toBeVisible()
 })
