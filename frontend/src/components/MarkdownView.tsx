@@ -94,7 +94,7 @@ function CitationAnchor({
     const sid = href.replace('#source-', '')
     const source = getSourceById(sid)
     const [open, setOpen] = useState(false)
-    const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+    const closeTimer = useRef<number | null>(null)
 
     const clearCloseTimer = useCallback(() => {
         if (closeTimer.current != null) {
