@@ -6,9 +6,15 @@ from app.api.routes.research import router as research_router
 from app.api.routes.auth import router as auth_router
 
 app = FastAPI(title='Multi-Agent Research Assistant API')
+
+# Credentialed browsers (cookie auth) require explicit origins — never '*'.
+_cors_origins = settings.cors_origins or [
+    'http://localhost:5173',
+    'http://localhost:3000',
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins or ['*'],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=['*'],
     allow_headers=['*'],

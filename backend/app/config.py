@@ -15,6 +15,11 @@ load_dotenv(_backend_dir / ".env", override=True)
 def _split_csv(s: str) -> list[str]:
     return [x.strip() for x in s.split(',') if x.strip()]
 
+def _normalize_cors_origins(raw: str | None) -> list[str]:
+    """Parse CORS origins; strip trailing slashes (browsers never send those)."""
+    origins = _split_csv(raw or '')
+    return [o.rstrip('/') for o in origins if o and o != '*']
+
 def _normalize_async_database_url(url: str) -> str:
     u = url.strip()
     if u.startswith('postgres://'):
@@ -76,8 +81,8 @@ class Settings:
     max_sources_for_summary: int = int(os.getenv('MAX_SOURCES_FOR_SUMMARY', '10'))
 
     cors_origins: list[str] = field(
-        default_factory=lambda: _split_csv(
-            os.getenv('CORS_ORIGINS', 'http://localhost:5173')
+        default_factory=lambda: _normalize_cors_origins(
+            os.getenv('CORS_ORIGINS', 'http://localhost:5173,http://localhost:3000')
         )
     )
 
