@@ -6,7 +6,9 @@ from fastapi import APIRouter, Depends, Query, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.api.deps import get_current_user
 from app.db import crud
+from app.db.models import User
 from app.db.session import get_db, AsyncSessionLocal
 from app.orchestrator import run_research_pipeline
 from app.schemas import ResearchRequest, ResearchResponse
@@ -19,8 +21,12 @@ def _sse(event: str, data: Any) -> bytes:
     return f'event: {event}\ndata: {payload}\n\n'.encode('utf-8')
 
 @router.post('', response_model=ResearchResponse)
-async def research(req: ResearchRequest, db: AsyncSession = Depends(get_db)):
-    session = await crud.create_research_session(db, user_query=req.query)
+async def research(
+    req: ResearchRequest,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    session = await crud.create_research_session(db, user_query=req.query, user_id=user.id)
     result = await run_research_pipeline(req.query, max_subquestions=req.max_subquestions, db=db, session_id=session.id, emit=None)
 
     return ResearchResponse(
@@ -36,12 +42,17 @@ async def research(req: ResearchRequest, db: AsyncSession = Depends(get_db)):
     )
 
 @router.get('/stream')
-async def research_stream(request: Request, query: str = Query(min_length=3, max_length=2000), max_subquestions: int | None = Query(default=None, ge=1, le=6)):
+async def research_stream(
+    request: Request,
+    query: str = Query(min_length=3, max_length=2000),
+    max_subquestions: int | None = Query(default=None, ge=1, le=6),
+    user: User = Depends(get_current_user),
+):
     """SSE endpoint. Emits events: session, progress, final, server_error"""
 
     # Create a session using a short-lived DB session
     async with AsyncSessionLocal() as db:
-        session = await crud.create_research_session(db, user_query=query)
+        session = await crud.create_research_session(db, user_query=query, user_id=user.id)
         session_id = session.id
 
     queue: asyncio.Queue[tuple[str, Any]] = asyncio.Queue()
@@ -52,7 +63,7 @@ async def research_stream(request: Request, query: str = Query(min_length=3, max
     async def runner():
         try:
             async with AsyncSessionLocal() as db2:
-                result = await run_research_pipeline(query, max_subquestions=max_subquestions, db=db2, session_id=session.id, emit=emit)
+                result = await run_research_pipeline(query, max_subquestions=max_subquestions, db=db2, session_id=session_id, emit=emit)
 
             final_payload = ResearchResponse(
                 session_id=session_id,

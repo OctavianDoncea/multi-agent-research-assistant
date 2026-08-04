@@ -81,6 +81,11 @@ class Settings:
         )
     )
 
+    # Auth / session cookies
+    session_ttl_days: int = int(os.getenv('SESSION_TTL_DAYS', '14'))
+    cookie_secure: bool = os.getenv('COOKIE_SECURE', 'false').lower() in ('1', 'true', 'yes', 'y')
+    cookie_samesite: str = os.getenv('COOKIE_SAMESITE', 'lax').lower()
+
     # Database config
     db_user: str = os.getenv('POSTGRES_USER', 'postgres')
     db_password: str = os.getenv('POSTGRES_PASSWORD')

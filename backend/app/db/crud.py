@@ -2,15 +2,66 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 from sqlalchemy import delete, select, update, or_
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.db.models import ResearchSession, AgentStep, Source, FactCheck, WebPageCache
+from app.db.models import ResearchSession, AgentStep, Source, FactCheck, WebPageCache, User, AuthSession
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
-async def create_research_session(db: AsyncSession, *, user_query: str) -> ResearchSession:
-    s = ResearchSession(user_query=user_query, status='running')
+async def create_user(db: AsyncSession, *, email: str, password_hash: str) -> User:
+    user = User(email=email.lower().strip(), password_hash=password_hash)
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+async def get_user_by_email(db: AsyncSession, email: str) -> User | None:
+    res = await db.execute(select(User).where(User.email == email.lower().strip()))
+    return res.scalar_one_or_none()
+
+async def get_user_by_id(db: AsyncSession, user_id: uuid.UUID) -> User | None:
+    res = await db.execute(select(User).where(User.id == user_id))
+    return res.scalar_one_or_none()
+
+async def create_auth_session(
+    db: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    token_hash: str,
+    expires_at: datetime,
+) -> AuthSession:
+    row = AuthSession(user_id=user_id, token_hash=token_hash, expires_at=expires_at)
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    return row
+
+async def get_user_by_session_token_hash(db: AsyncSession, token_hash: str) -> User | None:
+    res = await db.execute(
+        select(User)
+        .join(AuthSession, AuthSession.user_id == User.id)
+        .where(AuthSession.token_hash == token_hash)
+        .where(AuthSession.expires_at > utcnow())
+    )
+    return res.scalar_one_or_none()
+
+async def revoke_auth_session_by_token_hash(db: AsyncSession, token_hash: str) -> None:
+    await db.execute(delete(AuthSession).where(AuthSession.token_hash == token_hash))
+    await db.commit()
+
+async def create_research_session(
+    db: AsyncSession,
+    *,
+    user_query: str,
+    user_id: uuid.UUID | None = None,
+    is_public: bool = False,
+) -> ResearchSession:
+    s = ResearchSession(
+        user_query=user_query,
+        status='running',
+        user_id=user_id,
+        is_public=is_public,
+    )
     db.add(s)
     await db.commit()
     await db.refresh(s)
@@ -44,9 +95,15 @@ async def get_session(db: AsyncSession, session_id: uuid.UUID) -> ResearchSessio
     res = await db.execute(select(ResearchSession).where(ResearchSession.id == session_id))
     return res.scalar_one_or_none()
 
-
-async def list_sessions(db: AsyncSession, limit: int = 50, q: str | None = None, tag: str | None = None) -> list[ResearchSession]:
-    stmt = select(ResearchSession)
+async def list_sessions(
+    db: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    limit: int = 50,
+    q: str | None = None,
+    tag: str | None = None,
+) -> list[ResearchSession]:
+    stmt = select(ResearchSession).where(ResearchSession.user_id == user_id)
 
     if q:
         like = f'%{q}%'
@@ -86,7 +143,15 @@ async def upsert_cached_page(db: AsyncSession, *, url: str, status_code: int | N
         db.add(WebPageCache(url=url, status_code=status_code, context_text=context_text, error=error))
     await db.commit()
 
-async def update_session_meta(db: AsyncSession, session_id: uuid.UUId, *, title: str | None = None, pinned: bool | None = None, tags: list[str] | None = None) -> None:
+async def update_session_meta(
+    db: AsyncSession,
+    session_id: uuid.UUID,
+    *,
+    title: str | None = None,
+    pinned: bool | None = None,
+    tags: list[str] | None = None,
+    is_public: bool | None = None,
+) -> None:
     values = {'updated_at': utcnow()}
 
     if title is not None:
@@ -94,6 +159,9 @@ async def update_session_meta(db: AsyncSession, session_id: uuid.UUId, *, title:
 
     if pinned is not None:
         values['pinned'] = pinned
+
+    if is_public is not None:
+        values['is_public'] = is_public
 
     if tags is not None:
         norm = []

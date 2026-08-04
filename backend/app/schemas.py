@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, EmailStr
 from typing import Literal
 import uuid
 from datetime import datetime
@@ -44,6 +44,7 @@ class SessionListItem(BaseModel):
     title: str | None = None
     tags: list[str] = Field(default_factory=list)
     pinned: bool = False
+    is_public: bool = False
     status: str
     created_at: datetime
 
@@ -61,6 +62,8 @@ class SessionDetail(BaseModel):
     title: str | None = None
     tags: list[str] = Field(default_factory=list)
     pinned: bool = False
+    is_public: bool = False
+    is_owner: bool = False
     status: str
     error: str | None = None
     created_at: datetime
@@ -74,3 +77,14 @@ class SessionUpdateRequest(BaseModel):
     title: str | None = None
     pinned: bool | None = None
     tags: list[str] | None = None
+    is_public: bool | None = None
+
+
+class AuthCredentials(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=8, max_length=128)
+
+
+class UserOut(BaseModel):
+    id: uuid.UUID
+    email: str

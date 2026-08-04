@@ -13,3 +13,5 @@ asyncpg
 alembic
 pytest
 pytest-asyncio
+argon2-cffi
+email-validator

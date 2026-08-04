@@ -1,4 +1,4 @@
-import uuid 
+import uuid
 from datetime import datetime, timezone
 from typing import Optional
 from sqlalchemy import String, Text, Integer, DateTime, ForeignKey, Boolean
@@ -9,19 +9,47 @@ from app.db.session import Base
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
+
+class User(Base):
+    __tablename__ = 'users'
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    email: Mapped[str] = mapped_column(String(320), nullable=False, unique=True, index=True)
+    password_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+    auth_sessions: Mapped[list['AuthSession']] = relationship(back_populates='user', cascade='all, delete-orphan')
+    research_sessions: Mapped[list['ResearchSession']] = relationship(back_populates='owner')
+
+
+class AuthSession(Base):
+    __tablename__ = 'auth_sessions'
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+    user: Mapped['User'] = relationship(back_populates='auth_sessions')
+
+
 class ResearchSession(Base):
     __tablename__ = 'research_sessions'
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey('users.id', ondelete='SET NULL'), nullable=True, index=True)
     user_query: Mapped[str] = mapped_column(Text, nullable=False)
     title: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     tags: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
     pinned: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    is_public: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default='running')
     error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
-    
+
+    owner: Mapped[Optional['User']] = relationship(back_populates='research_sessions')
     agent_steps: Mapped[list['AgentStep']] = relationship(back_populates='session', cascade='all, delete-orphan')
     sources: Mapped[list['Source']] = relationship(back_populates='session', cascade='all, delete-orphan')
     fact_checks: Mapped[list['FactCheck']] = relationship(back_populates='session', cascade='all, delete-orphan')
@@ -65,7 +93,6 @@ class FactCheck(Base):
     status: Mapped[str] = mapped_column(String(16), nullable=False)
     evidence_source_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-
 
     session: Mapped['ResearchSession'] = relationship(back_populates='fact_checks')
 
