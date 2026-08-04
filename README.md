@@ -394,8 +394,8 @@ multi-agent-research-assistant/
 |--------|-------------------|
 | `POSTGRES_PASSWORD is not set` | Root `.env` must define password or `DATABASE_URL`. |
 | Frontend “Network error (SSE)” | Backend not running, wrong port, or CORS / proxy: in dev, Vite proxies `/api`; in Docker, nginx proxies to `backend` — ensure `CORS_ORIGINS` includes the browser origin (e.g. `http://localhost:5173`). |
-| “Not authenticated” right after login/register (split deploy) | Session cookie blocked cross-origin. On Render set `COOKIE_SAMESITE=none`, `COOKIE_SECURE=true`, `COOKIE_PARTITIONED=true`, and `CORS_ORIGINS` to your Vercel URL (no trailing slash). Redeploy the API, then sign in again. |
-| CORS error on login (`No Access-Control-Allow-Origin`) | Render `CORS_ORIGINS` must include the exact frontend origin, e.g. `https://multi-agent-researcher-assistant.vercel.app` (scheme + host only, no path/slash). Credentialed auth cannot use `*`. |
+| “Not authenticated” after login (split deploy) | Prefer redeploying the latest frontend/API: login returns `access_token` and the UI sends `Authorization: Bearer …` (SSE uses `?access_token=`), so blocked cross-origin cookies are no longer required. |
+| CORS error on login (`No Access-Control-Allow-Origin`) | Render `CORS_ORIGINS` must include the exact frontend origin, e.g. `https://multi-agent-researcher-assistant.vercel.app` (no trailing slash). Also allow `*.vercel.app` via the API regex. If Render was asleep, retry once after wake-up. |
 | Docker backend never becomes healthy | Postgres healthcheck DB name must match `POSTGRES_DB`; check `docker compose logs db`. |
 | Empty fact checks after reload | DB rows empty but steps exist — session GET tries step rehydration; ensure migrations applied and pipeline completed. |
 | Low “extraction coverage” in UI | Heuristic: fraction of sources with `extracted_text`. Many sites block scraping or return little text; not necessarily an LLM failure. |
