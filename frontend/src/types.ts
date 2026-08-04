@@ -39,6 +39,10 @@ export interface User {
     email: string
 }
 
+export interface AuthSession extends User {
+    access_token: string
+}
+
 export interface SessionListItem {
     id: string
     user_query: string

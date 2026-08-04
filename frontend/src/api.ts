@@ -1,10 +1,36 @@
-import type { ProgressEvent, ResearchResponse, SessionDetail, SessionListItem, User } from './types'
+import type { AuthSession, ProgressEvent, ResearchResponse, SessionDetail, SessionListItem, User } from './types'
 
 /** Empty in local Vite (proxy); set on Vercel to the Render backend origin. */
 const API_BASE_URL = String(import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '')
 
+const ACCESS_TOKEN_KEY = 'mara_access_token'
+
+export function getAccessToken(): string | null {
+    try {
+        return sessionStorage.getItem(ACCESS_TOKEN_KEY)
+    } catch {
+        return null
+    }
+}
+
+export function setAccessToken(token: string | null): void {
+    try {
+        if (token) sessionStorage.setItem(ACCESS_TOKEN_KEY, token)
+        else sessionStorage.removeItem(ACCESS_TOKEN_KEY)
+    } catch {
+        // ignore
+    }
+}
+
 function apiUrl(path: string): string {
     return `${API_BASE_URL}${path}`
+}
+
+function authHeaders(extra?: HeadersInit): Headers {
+    const headers = new Headers(extra)
+    const token = getAccessToken()
+    if (token) headers.set('Authorization', `Bearer ${token}`)
+    return headers
 }
 
 async function parseError(res: Response, fallback: string): Promise<string> {
@@ -12,17 +38,21 @@ async function parseError(res: Response, fallback: string): Promise<string> {
         const data = (await res.json()) as { detail?: unknown }
         if (typeof data.detail === 'string') return data.detail
         if (Array.isArray(data.detail)) {
-            return data.detail.map((d) => (typeof d === 'object' && d && 'msg' in d ? String((d as { msg: unknown }).msg) : String(d))).join('; ')
+            return data.detail
+                .map((d) => (typeof d === 'object' && d && 'msg' in d ? String((d as { msg: unknown }).msg) : String(d)))
+                .join('; ')
         }
     } catch {
-        
+        // ignore
     }
     return fallback
 }
 
 async function apiGet<T>(path: string): Promise<T> {
-    const url = apiUrl(path)
-    const res = await fetch(url, { credentials: 'include' })
+    const res = await fetch(apiUrl(path), {
+        credentials: 'include',
+        headers: authHeaders()
+    })
     if (!res.ok) throw new Error(await parseError(res, `GET ${path} failed: ${res.status}`))
     return (await res.json()) as T
 }
@@ -31,7 +61,7 @@ async function apiPostJson<T>(path: string, body: unknown): Promise<T> {
     const res = await fetch(apiUrl(path), {
         method: 'POST',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(body)
     })
     if (!res.ok) throw new Error(await parseError(res, `POST ${path} failed: ${res.status}`))
@@ -42,20 +72,29 @@ export async function getMe(): Promise<User> {
     return apiGet('/api/auth/me')
 }
 
-export async function register(email: string, password: string): Promise<User> {
-    return apiPostJson('/api/auth/register', { email, password })
+export async function register(email: string, password: string): Promise<AuthSession> {
+    const session = await apiPostJson<AuthSession>('/api/auth/register', { email, password })
+    setAccessToken(session.access_token)
+    return session
 }
 
-export async function login(email: string, password: string): Promise<User> {
-    return apiPostJson('/api/auth/login', { email, password })
+export async function login(email: string, password: string): Promise<AuthSession> {
+    const session = await apiPostJson<AuthSession>('/api/auth/login', { email, password })
+    setAccessToken(session.access_token)
+    return session
 }
 
 export async function logout(): Promise<void> {
-    const res = await fetch(apiUrl('/api/auth/logout'), {
-        method: 'POST',
-        credentials: 'include'
-    })
-    if (!res.ok) throw new Error(await parseError(res, `POST /api/auth/logout failed: ${res.status}`))
+    try {
+        const res = await fetch(apiUrl('/api/auth/logout'), {
+            method: 'POST',
+            credentials: 'include',
+            headers: authHeaders()
+        })
+        if (!res.ok) throw new Error(await parseError(res, `POST /api/auth/logout failed: ${res.status}`))
+    } finally {
+        setAccessToken(null)
+    }
 }
 
 export async function listSessions(limit = 50, q?: string, tag?: string): Promise<SessionListItem[]> {
@@ -76,7 +115,7 @@ export async function patchSession(
     const res = await fetch(apiUrl(`/api/sessions/${id}`), {
         method: 'PATCH',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(body)
     })
     if (!res.ok) throw new Error(await parseError(res, `PATCH /api/sessions/${id} failed: ${res.status}`))
@@ -94,7 +133,10 @@ export function researchStream(
         onSummaryDelta?: (delta: string) => void
     }
 ): () => void {
-    const url = apiUrl(`/api/research/stream?query=${encodeURIComponent(query)}`)
+    const params = new URLSearchParams({ query })
+    const token = getAccessToken()
+    if (token) params.set('access_token', token)
+    const url = apiUrl(`/api/research/stream?${params.toString()}`)
     const es = new EventSource(url, { withCredentials: true })
 
     es.addEventListener('session', (e) => {
