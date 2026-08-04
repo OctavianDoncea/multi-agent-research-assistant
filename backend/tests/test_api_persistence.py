@@ -62,6 +62,7 @@ async def test_auth_register_login_me_logout(fastapi_app):
         reg = await client.post('/api/auth/register', json={'email': email, 'password': 'password123'})
         assert reg.status_code == 200
         assert reg.json()['email'] == email
+        assert reg.json().get('access_token')
         assert 'session_token' in reg.cookies
 
         me = await client.get('/api/auth/me')
@@ -79,8 +80,13 @@ async def test_auth_register_login_me_logout(fastapi_app):
 
         ok = await client.post('/api/auth/login', json={'email': email, 'password': 'password123'})
         assert ok.status_code == 200
-        me3 = await client.get('/api/auth/me')
-        assert me3.status_code == 200
+        token = ok.json()['access_token']
+
+        # Bearer works without cookies (cross-origin / blocked-cookie case)
+        client.cookies.clear()
+        me_bearer = await client.get('/api/auth/me', headers={'Authorization': f'Bearer {token}'})
+        assert me_bearer.status_code == 200
+        assert me_bearer.json()['email'] == email
 
 @pytest.mark.asyncio
 async def test_research_requires_auth(fastapi_app):

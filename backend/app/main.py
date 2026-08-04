@@ -7,7 +7,8 @@ from app.api.routes.auth import router as auth_router
 
 app = FastAPI(title='Multi-Agent Research Assistant API')
 
-# Credentialed browsers (cookie auth) require explicit origins — never '*'.
+# Credentialed browsers require explicit origins — never '*'.
+# Also allow any *.vercel.app preview/production host.
 _cors_origins = settings.cors_origins or [
     'http://localhost:5173',
     'http://localhost:3000',
@@ -15,6 +16,7 @@ _cors_origins = settings.cors_origins or [
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
+    allow_origin_regex=r'https://.*\.vercel\.app',
     allow_credentials=True,
     allow_methods=['*'],
     allow_headers=['*'],

@@ -88,3 +88,8 @@ class AuthCredentials(BaseModel):
 class UserOut(BaseModel):
     id: uuid.UUID
     email: str
+
+
+class AuthSessionOut(UserOut):
+    """Login/register response. access_token is shown once for Bearer / SSE auth."""
+    access_token: str
