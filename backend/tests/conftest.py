@@ -13,7 +13,6 @@ _repo_root = _backend_dir.parent
 load_dotenv(_repo_root / ".env")
 load_dotenv(_backend_dir / ".env", override=True)
 
-
 def _build_database_url() -> str:
     existing = os.getenv('DATABASE_URL')
     if existing:
@@ -25,14 +24,11 @@ def _build_database_url() -> str:
     name = os.getenv('POSTGRES_DB', 'multi-agent')
     return f"postgresql+asyncpg://{user}:{password}@{host}:{port}/{name}"
 
-
 os.environ['DATABASE_URL'] = _build_database_url()
-
 
 @pytest.fixture(scope='session')
 def backend_dir() -> Path:
     return _backend_dir
-
 
 @pytest.fixture(scope='session')
 def apply_migrations(backend_dir: Path):
@@ -40,20 +36,19 @@ def apply_migrations(backend_dir: Path):
     cmd = [sys.executable, '-m', 'alembic', '-c', 'alembic.ini', 'upgrade', 'head']
     subprocess.run(cmd, cwd=str(backend_dir), check=True)
 
-
 @pytest.fixture
 async def db_clean(apply_migrations):
     """Truncate all tables between tests to keep isolation."""
     from app.db.session import AsyncSessionLocal
 
+    tables = 'web_page_cache, fact_checks, sources, agent_steps, research_sessions, auth_sessions, users'
     async with AsyncSessionLocal() as s:
-        await s.execute(text('TRUNCATE web_page_cache, fact_checks, sources, agent_steps, research_sessions RESTART IDENTITY CASCADE;'))
+        await s.execute(text(f'TRUNCATE {tables} RESTART IDENTITY CASCADE;'))
         await s.commit()
     yield
     async with AsyncSessionLocal() as s:
-        await s.execute(text('TRUNCATE web_page_cache, fact_checks, sources, agent_steps, research_sessions RESTART IDENTITY CASCADE;'))
+        await s.execute(text(f'TRUNCATE {tables} RESTART IDENTITY CASCADE;'))
         await s.commit()
-
 
 @pytest.fixture
 def fastapi_app(db_clean):

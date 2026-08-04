@@ -1,9 +1,17 @@
 import { test, expect } from '@playwright/test'
 
 const SESSION_QUERY = 'What are the main risks of LLM agents in production?'
+const USER = { id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', email: 'tester@example.com' }
 
 test('loads history and opens a session report', async ({ page }) => {
     const sessionId = '11111111-1111-1111-1111-111111111111'
+
+    await page.route('**/api/auth/me', async (route) => {
+        await route.fulfill({
+            contentType: 'application/json',
+            body: JSON.stringify(USER)
+        })
+    })
 
     await page.route('**/api/sessions?**', async (route) => {
         await route.fulfill({
@@ -16,13 +24,38 @@ test('loads history and opens a session report', async ({ page }) => {
                     created_at: new Date().toISOString(),
                     title: null,
                     tags: ['ai', 'security'],
-                    pinned: false
+                    pinned: false,
+                    is_public: false
                 }
             ])
         })
     })
 
     await page.route(`**/api/sessions/${sessionId}`, async (route) => {
+        if (route.request().method() === 'PATCH') {
+            const body = route.request().postDataJSON() as { is_public?: boolean }
+            await route.fulfill({
+                contentType: 'application/json',
+                body: JSON.stringify({
+                    id: sessionId,
+                    user_query: SESSION_QUERY,
+                    title: null,
+                    tags: ['ai', 'security'],
+                    pinned: false,
+                    is_public: !!body.is_public,
+                    is_owner: true,
+                    status: 'completed',
+                    error: null,
+                    created_at: new Date().toISOString(),
+                    summary_markdown: 'LLM agents can be vulnerable to prompt injection. [S1-1]',
+                    steps: [],
+                    sources: [],
+                    fact_checks: []
+                })
+            })
+            return
+        }
+
         await route.fulfill({
             contentType: 'application/json',
             body: JSON.stringify({
@@ -31,6 +64,8 @@ test('loads history and opens a session report', async ({ page }) => {
                 title: null,
                 tags: ['ai', 'security'],
                 pinned: false,
+                is_public: false,
+                is_owner: true,
                 status: 'completed',
                 error: null,
                 created_at: new Date().toISOString(),
@@ -69,4 +104,47 @@ test('loads history and opens a session report', async ({ page }) => {
 
     await page.getByRole('link', { name: 'S1-1' }).first().click()
     await expect(page.getByText('Source details')).toBeVisible()
+})
+
+test('guest can open a public shared session', async ({ page }) => {
+    const sessionId = '22222222-2222-2222-2222-222222222222'
+
+    await page.route('**/api/auth/me', async (route) => {
+        await route.fulfill({ status: 401, contentType: 'application/json', body: JSON.stringify({ detail: 'Not authenticated' }) })
+    })
+
+    await page.route(`**/api/sessions/${sessionId}`, async (route) => {
+        await route.fulfill({
+            contentType: 'application/json',
+            body: JSON.stringify({
+                id: sessionId,
+                user_query: SESSION_QUERY,
+                title: null,
+                tags: [],
+                pinned: false,
+                is_public: true,
+                is_owner: false,
+                status: 'completed',
+                error: null,
+                created_at: new Date().toISOString(),
+                summary_markdown: 'Public shared summary. [S1-1]',
+                steps: [],
+                sources: [
+                    {
+                        source_id: 'S1-1',
+                        url: 'https://example.com',
+                        title: 'Example Source',
+                        snippet: 'Example snippet',
+                        extracted_text: '...'
+                    }
+                ],
+                fact_checks: []
+            })
+        })
+    })
+
+    await page.goto(`/sessions/${sessionId}`)
+    await expect(page.getByText('Shared research report (read-only).')).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Summary' })).toBeVisible()
+    await expect(page.getByLabel('Research question')).toHaveCount(0)
 })

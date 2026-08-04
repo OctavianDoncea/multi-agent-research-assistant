@@ -268,16 +268,16 @@ Environment variables are loaded from **repository root** `.env` and optionally 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `CORS_ORIGINS` | `http://localhost:5173` | Comma-separated allowed browser origins. |
+| `SESSION_TTL_DAYS` | `14` | Auth session cookie lifetime. |
+| `COOKIE_SECURE` | `false` | Set `true` in production (HTTPS). Required with `COOKIE_SAMESITE=none`. |
+| `COOKIE_SAMESITE` | `lax` | Use `none` when the frontend and API are on different origins. |
 | `POSTGRES_*` | see `.env.example` | Individual DB fields used to build `DATABASE_URL`. |
 | `DATABASE_URL` | — | If set, overrides composed Postgres URL (e.g. managed Postgres). |
 
-**Security:** Never commit real `.env` files or API keys. Use `.env` locally and CI secrets in automation.
 
 ---
 
 ## API reference
-
-Base URL in development: **`http://localhost:8000`** (or proxied as **`/api`** from Vite).
 
 ### `GET /health`
 
@@ -285,7 +285,6 @@ Returns `{ "status": "ok" }` for load balancers and smoke tests.
 
 ### `POST /api/research`
 
-JSON body (`ResearchRequest`):
 
 - `query` (string, required, min length 3)  
 - `session_id` (optional UUID)  
@@ -308,11 +307,8 @@ The frontend closes the `EventSource` after `final` or `server_error`.
 
 ### `GET /api/sessions?limit=50`
 
-Lists recent sessions (`id`, `user_query`, `status`, `created_at`).
-
 ### `GET /api/sessions/{session_id}`
 
-Returns **`SessionDetail`**: metadata, `steps[]`, `sources[]`, `fact_checks[]`, and a **best-effort `summary_markdown`** reconstructed from the latest summarizer step. If fact-check rows are missing, the API may **rehydrate** claims from the latest fact-checker step output.
 
 ---
 
