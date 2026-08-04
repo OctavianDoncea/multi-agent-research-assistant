@@ -43,15 +43,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
     }, [])
 
-    const login = useCallback(async (email: string, password: string) => {
-        const me = await apiLogin(email, password)
-        setUser(me)
+    const establishSession = useCallback(async (authenticate: () => Promise<User>) => {
+        await authenticate()
+        // Confirm the httpOnly cookie is actually stored/sent (fails on misconfigured
+        // cross-origin cookies, e.g. SameSite=Lax between Vercel and Render).
+        try {
+            const me = await getMe()
+            setUser(me)
+        } catch {
+            setUser(null)
+            throw new Error(
+                'Signed in, but the session cookie was blocked. On a split-origin deploy, set COOKIE_SAMESITE=none, COOKIE_SECURE=true, and COOKIE_PARTITIONED=true on the API, and include this site in CORS_ORIGINS.'
+            )
+        }
     }, [])
 
-    const register = useCallback(async (email: string, password: string) => {
-        const me = await apiRegister(email, password)
-        setUser(me)
-    }, [])
+    const login = useCallback(
+        async (email: string, password: string) => {
+            await establishSession(() => apiLogin(email, password))
+        },
+        [establishSession]
+    )
+
+    const register = useCallback(
+        async (email: string, password: string) => {
+            await establishSession(() => apiRegister(email, password))
+        },
+        [establishSession]
+    )
 
     const logout = useCallback(async () => {
         await apiLogout()

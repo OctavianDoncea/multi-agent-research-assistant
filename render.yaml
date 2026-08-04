@@ -7,3 +7,13 @@ services:
     dockerContext: .
     plan: free
     healthCheckPath: /health
+    envVars:
+      # Required for Vercel (or any other origin) calling this API with cookies.
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: COOKIE_SAMESITE
+        value: none
+      - key: COOKIE_PARTITIONED
+        value: "true"
+      - key: CORS_ORIGINS
+        sync: false

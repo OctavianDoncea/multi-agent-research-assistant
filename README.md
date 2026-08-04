@@ -270,7 +270,8 @@ Environment variables are loaded from **repository root** `.env` and optionally 
 | `CORS_ORIGINS` | `http://localhost:5173` | Comma-separated allowed browser origins. |
 | `SESSION_TTL_DAYS` | `14` | Auth session cookie lifetime. |
 | `COOKIE_SECURE` | `false` | Set `true` in production (HTTPS). Required with `COOKIE_SAMESITE=none`. |
-| `COOKIE_SAMESITE` | `lax` | Use `none` when the frontend and API are on different origins. |
+| `COOKIE_SAMESITE` | `lax` | Use `none` when the frontend and API are on different origins (Vercel → Render). |
+| `COOKIE_PARTITIONED` | `false` | Set `true` with `SameSite=none` so Chromium accepts the cross-site session cookie (CHIPS). |
 | `POSTGRES_*` | see `.env.example` | Individual DB fields used to build `DATABASE_URL`. |
 | `DATABASE_URL` | — | If set, overrides composed Postgres URL (e.g. managed Postgres). |
 
@@ -393,6 +394,7 @@ multi-agent-research-assistant/
 |--------|-------------------|
 | `POSTGRES_PASSWORD is not set` | Root `.env` must define password or `DATABASE_URL`. |
 | Frontend “Network error (SSE)” | Backend not running, wrong port, or CORS / proxy: in dev, Vite proxies `/api`; in Docker, nginx proxies to `backend` — ensure `CORS_ORIGINS` includes the browser origin (e.g. `http://localhost:5173`). |
+| “Not authenticated” right after login/register (split deploy) | Session cookie blocked cross-origin. On Render set `COOKIE_SAMESITE=none`, `COOKIE_SECURE=true`, `COOKIE_PARTITIONED=true`, and `CORS_ORIGINS` to your Vercel URL (no trailing slash). Redeploy the API, then sign in again. |
 | Docker backend never becomes healthy | Postgres healthcheck DB name must match `POSTGRES_DB`; check `docker compose logs db`. |
 | Empty fact checks after reload | DB rows empty but steps exist — session GET tries step rehydration; ensure migrations applied and pipeline completed. |
 | Low “extraction coverage” in UI | Heuristic: fraction of sources with `extracted_text`. Many sites block scraping or return little text; not necessarily an LLM failure. |
