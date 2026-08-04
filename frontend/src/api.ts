@@ -1,7 +1,19 @@
 import type { AuthSession, ProgressEvent, ResearchResponse, SessionDetail, SessionListItem, User } from './types'
 
-/** Empty in local Vite (proxy); set on Vercel to the Render backend origin. */
-const API_BASE_URL = String(import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '')
+/**
+ * Prefer same-origin `/api` (Vite dev proxy or Vercel rewrites → Render).
+ * Cross-origin VITE_API_BASE_URL is ignored on *.vercel.app so login is not
+ * blocked by browser CORS when the env still points at onrender.com.
+ */
+function resolveApiBaseUrl(): string {
+    const configured = String(import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '')
+    if (typeof window !== 'undefined' && /\.vercel\.app$/i.test(window.location.hostname)) {
+        return ''
+    }
+    return configured
+}
+
+const API_BASE_URL = resolveApiBaseUrl()
 
 const ACCESS_TOKEN_KEY = 'mara_access_token'
 
