@@ -1,4 +1,4 @@
-import type { ProgressEvent, ResearchResponse, SessionDetail, SessionListItem } from './types'
+import type { ProgressEvent, ResearchResponse, SessionDetail, SessionListItem, User } from './types'
 
 /** Empty in local Vite (proxy); set on Vercel to the Render backend origin. */
 const API_BASE_URL = String(import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '')
@@ -7,11 +7,55 @@ function apiUrl(path: string): string {
     return `${API_BASE_URL}${path}`
 }
 
+async function parseError(res: Response, fallback: string): Promise<string> {
+    try {
+        const data = (await res.json()) as { detail?: unknown }
+        if (typeof data.detail === 'string') return data.detail
+        if (Array.isArray(data.detail)) {
+            return data.detail.map((d) => (typeof d === 'object' && d && 'msg' in d ? String((d as { msg: unknown }).msg) : String(d))).join('; ')
+        }
+    } catch {
+        
+    }
+    return fallback
+}
+
 async function apiGet<T>(path: string): Promise<T> {
     const url = apiUrl(path)
-    const res = await fetch(url)
-    if (!res.ok) throw new Error(`GET ${path} failed: ${res.status}`)
+    const res = await fetch(url, { credentials: 'include' })
+    if (!res.ok) throw new Error(await parseError(res, `GET ${path} failed: ${res.status}`))
     return (await res.json()) as T
+}
+
+async function apiPostJson<T>(path: string, body: unknown): Promise<T> {
+    const res = await fetch(apiUrl(path), {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    })
+    if (!res.ok) throw new Error(await parseError(res, `POST ${path} failed: ${res.status}`))
+    return (await res.json()) as T
+}
+
+export async function getMe(): Promise<User> {
+    return apiGet('/api/auth/me')
+}
+
+export async function register(email: string, password: string): Promise<User> {
+    return apiPostJson('/api/auth/register', { email, password })
+}
+
+export async function login(email: string, password: string): Promise<User> {
+    return apiPostJson('/api/auth/login', { email, password })
+}
+
+export async function logout(): Promise<void> {
+    const res = await fetch(apiUrl('/api/auth/logout'), {
+        method: 'POST',
+        credentials: 'include'
+    })
+    if (!res.ok) throw new Error(await parseError(res, `POST /api/auth/logout failed: ${res.status}`))
 }
 
 export async function listSessions(limit = 50, q?: string, tag?: string): Promise<SessionListItem[]> {
@@ -25,13 +69,17 @@ export async function getSession(id: string): Promise<SessionDetail> {
     return apiGet(`/api/sessions/${id}`)
 }
 
-export async function patchSession(id: string, body: { title?: string | null; pinned?: boolean | null; tags?: string[] | null }) {
+export async function patchSession(
+    id: string,
+    body: { title?: string | null; pinned?: boolean | null; tags?: string[] | null; is_public?: boolean | null }
+) {
     const res = await fetch(apiUrl(`/api/sessions/${id}`), {
         method: 'PATCH',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
     })
-    if (!res.ok) throw new Error(`PATCH /api/sessions/${id} failed: ${res.status}`)
+    if (!res.ok) throw new Error(await parseError(res, `PATCH /api/sessions/${id} failed: ${res.status}`))
     return (await res.json()) as SessionDetail
 }
 
@@ -47,7 +95,7 @@ export function researchStream(
     }
 ): () => void {
     const url = apiUrl(`/api/research/stream?query=${encodeURIComponent(query)}`)
-    const es = new EventSource(url)
+    const es = new EventSource(url, { withCredentials: true })
 
     es.addEventListener('session', (e) => {
         try {
@@ -101,5 +149,5 @@ export function researchStream(
         es.close()
     }
 
-    return () => es.close
+    return () => es.close()
 }

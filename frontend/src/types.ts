@@ -34,12 +34,18 @@ export interface ResearchResponse {
     debug_steps: AgentStepDebug[]
 }
 
+export interface User {
+    id: string
+    email: string
+}
+
 export interface SessionListItem {
     id: string
     user_query: string
     title?: string | null
     tags?: string[]
     pinned?: boolean
+    is_public?: boolean
     status: string
     created_at: string
 }
@@ -50,6 +56,8 @@ export interface SessionDetail {
     title?: string | null
     tags?: string[]
     pinned?: boolean
+    is_public?: boolean
+    is_owner?: boolean
     status: string
     error?: string | null
     created_at: string

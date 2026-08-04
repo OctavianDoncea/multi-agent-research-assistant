@@ -1,14 +1,13 @@
-// frontend/src/App.tsx
-
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
-import { Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { ChevronDown, Download, Link2, Menu, RotateCcw, Sparkles, X } from 'lucide-react'
+import { Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom'
+import { ChevronDown, Download, Link2, LogOut, Menu, RotateCcw, Sparkles, X } from 'lucide-react'
 import { toast } from 'sonner'
-
 import type { ProgressEvent, ResearchResponse, SessionDetail, SessionListItem, Source } from './types'
 import type { StageState } from './components/ProgressSteps'
 import { getSession, listSessions, patchSession, researchStream } from './api'
-
+import { useAuth } from './auth/AuthContext'
+import { LoginPage } from './pages/LoginPage'
+import { RegisterPage } from './pages/RegisterPage'
 import { HistorySidebar } from './components/HistorySidebar'
 import { MobileHistoryDrawer } from './components/MobileHistoryDrawer'
 import { ProgressSteps } from './components/ProgressSteps'
@@ -213,8 +212,42 @@ function SessionLoader({
 }
 
 export default function App() {
+  const { user, loading } = useAuth()
+  const location = useLocation()
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background text-sm text-muted-foreground">
+        Loading…
+      </div>
+    )
+  }
+
+  const onSharedSession = location.pathname.startsWith('/sessions/')
+
+  return (
+    <Routes>
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/register" element={<RegisterPage />} />
+      <Route
+        path="/*"
+        element={
+          user || onSharedSession ? (
+            <ResearchWorkspace readOnlyGuest={!user} />
+          ) : (
+            <Navigate to="/login" replace state={{ from: location.pathname }} />
+          )
+        }
+      />
+    </Routes>
+  )
+}
+
+function ResearchWorkspace({ readOnlyGuest = false }: { readOnlyGuest?: boolean }) {
   const navigate = useNavigate()
   const location = useLocation()
+  const { user, logout } = useAuth()
+  const isAuthed = !!user && !readOnlyGuest
 
   const [theme, setTheme] = useState<ThemeMode>(() => initTheme())
 
@@ -226,6 +259,8 @@ export default function App() {
   const [historyQuery, setHistoryQuery] = useState('')
   const [activeTags, setActiveTags] = useState<string[]>([])
   const [tagDraft, setTagDraft] = useState('')
+  const [isPublic, setIsPublic] = useState(false)
+  const [isOwner, setIsOwner] = useState(false)
 
   const [current, setCurrent] = useState<ResearchResponse | null>(null)
   const [loading, setLoading] = useState(false)
@@ -262,19 +297,24 @@ export default function App() {
   )
 
   const refreshHistory = useCallback(async (q = '') => {
+    if (!isAuthed) {
+      setSessions([])
+      return
+    }
     const s = await listSessions(50, q.trim() || undefined)
     setSessions(s)
-  }, [])
+  }, [isAuthed])
 
   useEffect(() => {
+    if (!isAuthed) return
     const t = window.setTimeout(() => {
       refreshHistory(historyQuery).catch((e) => setError(String(e)))
     }, 250)
     return () => window.clearTimeout(t)
-  }, [historyQuery, refreshHistory])
+  }, [historyQuery, refreshHistory, isAuthed])
 
   async function persistTags(next: string[]) {
-    if (!selectedSessionId) return
+    if (!selectedSessionId || !isOwner) return
     const prev = activeTags
     setActiveTags(next)
     try {
@@ -289,7 +329,7 @@ export default function App() {
 
   async function addTagFromDraft() {
     const t = tagDraft.trim()
-    if (!t || !selectedSessionId) return
+    if (!t || !selectedSessionId || !isOwner) return
     const key = t.toLowerCase()
     if (activeTags.some((x) => x.toLowerCase() === key)) {
       setTagDraft('')
@@ -297,6 +337,21 @@ export default function App() {
     }
     setTagDraft('')
     await persistTags([...activeTags, t])
+  }
+
+  async function togglePublicShare(next: boolean) {
+    if (!selectedSessionId || !isOwner) return
+    const prev = isPublic
+    setIsPublic(next)
+    try {
+      const detail = await patchSession(selectedSessionId, { is_public: next })
+      setIsPublic(!!detail.is_public)
+      await refreshHistory(historyQuery)
+      toast.success(next ? 'Share link is public' : 'Session is private')
+    } catch (e) {
+      setIsPublic(prev)
+      toast.error(String(e))
+    }
   }
 
   function updateFromProgress(evt: ProgressEvent) {
@@ -335,12 +390,15 @@ export default function App() {
   }
 
   async function runStream(q: string) {
+    if (!isAuthed) return
     setError(null)
     setLoading(true)
     setCurrent(null)
     setStreamSummary('')
     setActiveTags([])
     setTagDraft('')
+    setIsPublic(false)
+    setIsOwner(true)
     setDrawerSourceId(null)
     setStageState(initialStageState)
     setProgressMsg(null)
@@ -387,7 +445,7 @@ export default function App() {
   }
 
   async function onRetry() {
-    if (!lastRunQuery) return
+    if (!lastRunQuery || !isAuthed) return
     setQuery(lastRunQuery)
     await runStream(lastRunQuery)
   }
@@ -403,12 +461,12 @@ export default function App() {
   )
 
   async function handleSelectSession(id: string) {
-    // Fill the question immediately from list view (your requirement)
     const item = sessions.find((s) => s.id === id)
     if (item) {
       setQuery(item.user_query)
       setLastRunQuery(item.user_query)
       setActiveTags(item.tags ?? [])
+      setIsPublic(!!item.is_public)
     }
 
     setSelectedSessionId(id)
@@ -427,6 +485,8 @@ export default function App() {
     setStreamSummary('')
     setActiveTags(detail.tags ?? [])
     setTagDraft('')
+    setIsPublic(!!detail.is_public)
+    setIsOwner(!!detail.is_owner)
 
     setLoading(false)
     setProgressMsg('loaded from history')
@@ -439,17 +499,21 @@ export default function App() {
     !!current.summary_markdown &&
     sessionMatchesSelection
 
+  const canEditMeta = isAuthed && isOwner
+
   return (
     <div className="min-h-screen h-full">
-      <MobileHistoryDrawer
-        open={mobileHistoryOpen}
-        onOpenChange={setMobileHistoryOpen}
-        sessions={sessions}
-        selectedId={selectedSessionId}
-        onSelect={handleSelectSession}
-        searchQuery={historyQuery}
-        onSearchChange={setHistoryQuery}
-      />
+      {isAuthed ? (
+        <MobileHistoryDrawer
+          open={mobileHistoryOpen}
+          onOpenChange={setMobileHistoryOpen}
+          sessions={sessions}
+          selectedId={selectedSessionId}
+          onSelect={handleSelectSession}
+          searchQuery={historyQuery}
+          onSearchChange={setHistoryQuery}
+        />
+      ) : null}
 
       <SourceDrawer
         open={!!drawerSourceId}
@@ -460,15 +524,17 @@ export default function App() {
       />
 
       <div className="flex h-screen min-h-0">
-        <aside className="hidden w-80 shrink-0 border-r border-border bg-card md:block">
-          <HistorySidebar
-            sessions={sessions}
-            selectedId={selectedSessionId}
-            onSelect={handleSelectSession}
-            searchQuery={historyQuery}
-            onSearchChange={setHistoryQuery}
-          />
-        </aside>
+        {isAuthed ? (
+          <aside className="hidden w-80 shrink-0 border-r border-border bg-card md:block">
+            <HistorySidebar
+              sessions={sessions}
+              selectedId={selectedSessionId}
+              onSelect={handleSelectSession}
+              searchQuery={historyQuery}
+              onSearchChange={setHistoryQuery}
+            />
+          </aside>
+        ) : null}
 
         <main className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
           <div className="sticky top-0 z-40 shrink-0 border-b border-border/80 bg-background/90 shadow-sm backdrop-blur-md supports-[backdrop-filter]:bg-background/75">
@@ -517,28 +583,61 @@ export default function App() {
                     <Download className="h-4 w-4 shrink-0" />
                     <span className="hidden sm:inline">Export</span>
                   </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    disabled={!lastRunQuery || loading || routeLoading}
-                    className="h-9 gap-1.5 px-3 text-xs font-semibold transition motion-safe:hover:-translate-y-0.5 motion-safe:hover:shadow-soft"
-                    onClick={() => void onRetry()}
-                  >
-                    <RotateCcw className="h-4 w-4 shrink-0" />
-                    <span className="hidden sm:inline">Retry</span>
-                  </Button>
+                  {isAuthed ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={!lastRunQuery || loading || routeLoading}
+                      className="h-9 gap-1.5 px-3 text-xs font-semibold transition motion-safe:hover:-translate-y-0.5 motion-safe:hover:shadow-soft"
+                      onClick={() => void onRetry()}
+                    >
+                      <RotateCcw className="h-4 w-4 shrink-0" />
+                      <span className="hidden sm:inline">Retry</span>
+                    </Button>
+                  ) : null}
                 </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  className="md:hidden"
-                  onClick={() => setMobileHistoryOpen(true)}
-                  aria-label="Open history"
-                >
-                  <Menu className="h-4 w-4" />
-                </Button>
+                {isAuthed ? (
+                  <>
+                    <span className="hidden max-w-[10rem] truncate text-xs text-muted-foreground sm:inline" title={user?.email}>
+                      {user?.email}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-9 gap-1.5"
+                      onClick={async () => {
+                        try {
+                          await logout()
+                          navigate('/login', { replace: true })
+                        } catch (e) {
+                          toast.error(String(e))
+                        }
+                      }}
+                    >
+                      <LogOut className="h-4 w-4" />
+                      <span className="hidden sm:inline">Log out</span>
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="md:hidden"
+                      onClick={() => setMobileHistoryOpen(true)}
+                      aria-label="Open history"
+                    >
+                      <Menu className="h-4 w-4" />
+                    </Button>
+                  </>
+                ) : (
+                  <Link
+                    to="/login"
+                    className="inline-flex h-9 items-center justify-center rounded-md border border-border bg-transparent px-3 text-sm font-medium hover:bg-muted"
+                  >
+                    Sign in
+                  </Link>
+                )}
                 <ThemeToggle mode={theme} onChange={setTheme} />
               </div>
             </div>
@@ -547,43 +646,58 @@ export default function App() {
           <div className="min-h-0 flex-1 overflow-y-auto">
             <div className="mx-auto max-w-6xl space-y-4 p-4 pb-12 md:space-y-5 md:p-6">
               <p className="animate-in fade-in-0 text-sm text-muted-foreground duration-500">
-                Publishable research reports with citations, sources, and fact-checks.
+                {isAuthed
+                  ? 'Publishable research reports with citations, sources, and fact-checks.'
+                  : 'Shared research report (read-only).'}
               </p>
 
-              <Card className="animate-in fade-in-0 slide-in-from-bottom-1 border-border/80 shadow-soft transition motion-safe:hover:shadow-md motion-safe:hover:-translate-y-0.5 duration-300">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base">New research</CardTitle>
-                  <CardDescription>Ask a question — we plan, search, summarize, and fact-check.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="flex flex-col gap-3 lg:flex-row lg:items-stretch">
-                    <Input
-                      value={query}
-                      onChange={(e) => setQuery(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') void onResearch()
-                      }}
-                      placeholder="Ask a research question…"
-                      className="lg:flex-1"
-                      aria-label="Research question"
-                    />
-                    <Button
-                      type="button"
-                      className="h-10 shrink-0 px-6 font-bold shadow-soft transition motion-safe:hover:-translate-y-0.5 motion-safe:hover:shadow-md"
-                      onClick={() => void onResearch()}
-                      disabled={loading || routeLoading}
-                    >
-                      {loading ? 'Researching…' : 'Research'}
-                    </Button>
-                  </div>
-                  <ProgressSteps state={stageState} message={progressMsg} />
-                </CardContent>
-                {selectedSessionId ? (
-                  <CardFooter className="flex flex-wrap gap-2 border-t border-border/60 bg-muted/20 text-xs text-muted-foreground">
-                    <span className="font-mono text-[11px] text-foreground/80">{selectedSessionId}</span>
-                  </CardFooter>
-                ) : null}
-              </Card>
+              {isAuthed ? (
+                <Card className="animate-in fade-in-0 slide-in-from-bottom-1 border-border/80 shadow-soft transition motion-safe:hover:shadow-md motion-safe:hover:-translate-y-0.5 duration-300">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base">New research</CardTitle>
+                    <CardDescription>Ask a question — we plan, search, summarize, and fact-check.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-stretch">
+                      <Input
+                        value={query}
+                        onChange={(e) => setQuery(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') void onResearch()
+                        }}
+                        placeholder="Ask a research question…"
+                        className="lg:flex-1"
+                        aria-label="Research question"
+                      />
+                      <Button
+                        type="button"
+                        className="h-10 shrink-0 px-6 font-bold shadow-soft transition motion-safe:hover:-translate-y-0.5 motion-safe:hover:shadow-md"
+                        onClick={() => void onResearch()}
+                        disabled={loading || routeLoading}
+                      >
+                        {loading ? 'Researching…' : 'Research'}
+                      </Button>
+                    </div>
+                    <ProgressSteps state={stageState} message={progressMsg} />
+                  </CardContent>
+                  {selectedSessionId ? (
+                    <CardFooter className="flex flex-wrap items-center gap-3 border-t border-border/60 bg-muted/20 text-xs text-muted-foreground">
+                      <span className="font-mono text-[11px] text-foreground/80">{selectedSessionId}</span>
+                      {canEditMeta ? (
+                        <label className="ml-auto flex cursor-pointer items-center gap-2 text-xs font-medium text-foreground">
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 accent-primary"
+                            checked={isPublic}
+                            onChange={(e) => void togglePublicShare(e.target.checked)}
+                          />
+                          Public share link
+                        </label>
+                      ) : null}
+                    </CardFooter>
+                  ) : null}
+                </Card>
+              ) : null}
 
               <Routes>
                 <Route
@@ -633,7 +747,7 @@ export default function App() {
                     <SkeletonBlock lines={7} />
                   </CardContent>
                 </Card>
-              ) : !hasResult ? (
+              ) : !hasResult && isAuthed ? (
                 <Card className="animate-in fade-in-0 border-dashed border-border duration-500">
                   <CardHeader>
                     <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
@@ -703,6 +817,7 @@ export default function App() {
                           ) : (
                             <Badge variant="outline">Session</Badge>
                           )}
+                          {isPublic ? <Badge variant="outline">Public</Badge> : null}
                         </div>
                         <CardTitle className="pt-2 text-2xl font-bold leading-tight tracking-tight text-foreground">
                           {current.query}
@@ -710,7 +825,7 @@ export default function App() {
                         <CardDescription className="text-base font-medium text-muted-foreground">
                           Research question
                         </CardDescription>
-                        {selectedSessionId ? (
+                        {selectedSessionId && canEditMeta ? (
                           <div className="flex flex-wrap items-center gap-2 pt-3">
                             {activeTags.map((t) => (
                               <Badge key={t} variant="secondary" className="gap-1 pr-1 font-medium">
@@ -738,6 +853,14 @@ export default function App() {
                               aria-label="Add tag"
                               className="h-8 w-28 text-xs"
                             />
+                          </div>
+                        ) : activeTags.length > 0 ? (
+                          <div className="flex flex-wrap items-center gap-2 pt-3">
+                            {activeTags.map((t) => (
+                              <Badge key={t} variant="secondary" className="font-medium">
+                                {t}
+                              </Badge>
+                            ))}
                           </div>
                         ) : null}
                       </CardHeader>
