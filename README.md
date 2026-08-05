@@ -2,26 +2,37 @@
 
 A full-stack application that turns a natural-language research question into a **structured report**: sub-questions, web sources with extracted text, a **markdown summary** with inline citations (`[S1-1]`, `(s1-1)`), and **LLM-generated fact checks**. Sessions are **persisted in PostgreSQL** and shareable via URL.
 
+**Try it live:** [https://multi-agent-researcher-assistant.vercel.app/](https://multi-agent-researcher-assistant.vercel.app/)
+
 ---
 
 ## Table of contents
 
-1. [Features](#features)  
-2. [Screenshots](#screenshots)  
-3. [Architecture](#architecture)  
-4. [Tech stack](#tech-stack)  
-5. [Prerequisites](#prerequisites)  
-6. [Quick start (local)](#quick-start-local)  
-7. [Run with Docker](#run-with-docker)  
-8. [Configuration](#configuration)  
-9. [API reference](#api-reference)  
-10. [Research pipeline](#research-pipeline)  
-11. [Frontend](#frontend)  
-12. [Testing](#testing)  
-13. [Project layout](#project-layout)  
-14. [Troubleshooting](#troubleshooting)  
-15. [Future work](#future-work)  
-16. [License](#license)
+1. [Live demo](#live-demo)  
+2. [Features](#features)  
+3. [Screenshots](#screenshots)  
+4. [Architecture](#architecture)  
+5. [Tech stack](#tech-stack)  
+6. [Prerequisites](#prerequisites)  
+7. [Quick start (local)](#quick-start-local)  
+8. [Run with Docker](#run-with-docker)  
+9. [Configuration](#configuration)  
+10. [API reference](#api-reference)  
+11. [Research pipeline](#research-pipeline)  
+12. [Frontend](#frontend)  
+13. [Testing](#testing)  
+14. [Project layout](#project-layout)  
+15. [Troubleshooting](#troubleshooting)  
+16. [Future work](#future-work)  
+17. [License](#license)
+
+---
+
+## Live demo
+
+Use the deployed app without setting up a local environment:
+
+**[Open Multi-Agent Research Assistant](https://multi-agent-researcher-assistant.vercel.app/)**
 
 ---
 
