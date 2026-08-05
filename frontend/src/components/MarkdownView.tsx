@@ -41,6 +41,19 @@ export function linkifyCitations(md: string): string {
     return replaceParenCitations(replaceBracketCitations(md))
 }
 
+export function normalizeReportMarkdown(md: string): string {
+    let s = md.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+
+    s = s.replace(/^(?!#)([^\n]+)\n={3,}[ \t]*$/gm, '# $1')
+    s = s.replace(/^(?!#)([^\n]+)\n-{3,}[ \t]*$/gm, '## $1')
+
+    s = s.replace(/^[ \t]*={3,}[ \t]*$/gm, '')
+    s = s.replace(/^[ \t]*([-*_])\1{2,}[ \t]*$/gm, '')
+
+    s = s.replace(/\n{3,}/g, '\n\n')
+    return s.trim()
+}
+
 function hostFromUrl(url: string): string | null {
     try {
         return new URL(url).hostname
@@ -184,7 +197,7 @@ export function MarkdownView({
     getSourceById: (id: string) => Source | undefined
     onOpenSource: (id: string) => void
 }) {
-    const processed = linkifyCitations(markdown)
+    const processed = linkifyCitations(normalizeReportMarkdown(markdown))
     const slugger = new GithubSlugger()
 
     const resolveSource = useCallback(
@@ -192,31 +205,68 @@ export function MarkdownView({
         [getSourceById]
     )
 
+    const headingText = (children: ReactNode) =>
+        Array.isArray(children)
+            ? children.map((c) => (typeof c === 'string' || typeof c === 'number' ? String(c) : '')).join('')
+            : typeof children === 'string' || typeof children === 'number'
+              ? String(children)
+              : ''
+
     return (
-        <div className="prose prose-sm max-w-none dark:prose-invert">
+        <div className="report-md max-w-none text-sm leading-relaxed text-foreground/90">
             <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 components={{
                     h1: ({ children }) => {
-                        const text = String(children)
-                        const id = `h-${slugger.slug(text)}`
-                        return <h1 id={id}>{children}</h1>
+                        const id = `h-${slugger.slug(headingText(children))}`
+                        return (
+                            <h1
+                                id={id}
+                                className="mt-0 mb-4 text-2xl font-semibold tracking-tight text-foreground"
+                            >
+                                {children}
+                            </h1>
+                        )
                     },
                     h2: ({ children }) => {
-                        const text = String(children)
-                        const id = `h-${slugger.slug(text)}`
-                        return <h2 id={id}>{children}</h2>
+                        const id = `h-${slugger.slug(headingText(children))}`
+                        return (
+                            <h2
+                                id={id}
+                                className="mt-8 mb-2 text-lg font-semibold tracking-tight text-foreground first:mt-0"
+                            >
+                                {children}
+                            </h2>
+                        )
                     },
                     h3: ({ children }) => {
-                        const text = String(children)
-                        const id = `h-${slugger.slug(text)}`
-                        return <h3 id={id}>{children}</h3>
+                        const id = `h-${slugger.slug(headingText(children))}`
+                        return (
+                            <h3
+                                id={id}
+                                className="mt-6 mb-2 text-base font-semibold tracking-tight text-foreground"
+                            >
+                                {children}
+                            </h3>
+                        )
                     },
                     h4: ({ children }) => {
-                        const text = String(children)
-                        const id = `h-${slugger.slug(text)}`
-                        return <h4 id={id}>{children}</h4>
+                        const id = `h-${slugger.slug(headingText(children))}`
+                        return (
+                            <h4
+                                id={id}
+                                className="mt-5 mb-1.5 text-sm font-semibold tracking-tight text-foreground"
+                            >
+                                {children}
+                            </h4>
+                        )
                     },
+                    p: ({ children }) => <p className="my-3 leading-relaxed">{children}</p>,
+                    ul: ({ children }) => <ul className="my-3 list-disc space-y-1.5 pl-5">{children}</ul>,
+                    ol: ({ children }) => <ol className="my-3 list-decimal space-y-1.5 pl-5">{children}</ol>,
+                    li: ({ children }) => <li className="leading-relaxed">{children}</li>,
+                    strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
+                    hr: () => null,
                     a: ({ href, children, ...props }) => {
                         const isInternalCitation = typeof href === 'string' && href.startsWith('#source-')
                         if (!isInternalCitation) {

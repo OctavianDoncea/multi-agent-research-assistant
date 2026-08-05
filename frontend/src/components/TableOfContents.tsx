@@ -1,4 +1,5 @@
 import GithubSlugger from 'github-slugger'
+import { normalizeReportMarkdown } from './MarkdownView'
 
 export type TableOfContentsItem = { level: number, text: string, id: string }
 
@@ -18,7 +19,7 @@ function removeCodeFences(md: string): string {
 
 export function buildTableOfContents(markdown: string): TableOfContentsItem[] {
     const slugger = new GithubSlugger()
-    const cleaned = removeCodeFences(markdown)
+    const cleaned = removeCodeFences(normalizeReportMarkdown(markdown))
     const items: TableOfContentsItem[] = []
     const re = /^(#{1,6})\s+(.+)$/gm
 
