@@ -36,19 +36,22 @@ def apply_migrations(backend_dir: Path):
     cmd = [sys.executable, '-m', 'alembic', '-c', 'alembic.ini', 'upgrade', 'head']
     subprocess.run(cmd, cwd=str(backend_dir), check=True)
 
-@pytest.fixture
-async def db_clean(apply_migrations):
-    """Truncate all tables between tests to keep isolation."""
-    from app.db.session import AsyncSessionLocal
+async def _truncate_all() -> None:
+    from app.db.session import AsyncSessionLocal, engine
+
+    await engine.dispose()
 
     tables = 'web_page_cache, fact_checks, sources, agent_steps, research_sessions, auth_sessions, users'
     async with AsyncSessionLocal() as s:
         await s.execute(text(f'TRUNCATE {tables} RESTART IDENTITY CASCADE;'))
         await s.commit()
+
+@pytest.fixture
+async def db_clean(apply_migrations):
+    """Truncate all tables between tests to keep isolation."""
+    await _truncate_all()
     yield
-    async with AsyncSessionLocal() as s:
-        await s.execute(text(f'TRUNCATE {tables} RESTART IDENTITY CASCADE;'))
-        await s.commit()
+    await _truncate_all()
 
 @pytest.fixture
 def fastapi_app(db_clean):
