@@ -271,7 +271,7 @@ Environment variables are loaded from **repository root** `.env` and optionally 
 | `SESSION_TTL_DAYS` | `14` | Auth session cookie lifetime. |
 | `COOKIE_SECURE` | `false` | Set `true` in production (HTTPS). Required with `COOKIE_SAMESITE=none`. |
 | `COOKIE_SAMESITE` | `lax` | Use `none` when the frontend and API are on different origins (Vercel → Render). |
-| `COOKIE_PARTITIONED` | `false` | Set `true` with `SameSite=none` so Chromium accepts the cross-site session cookie (CHIPS). |
+| `COOKIE_PARTITIONED` | `false` | CHIPS partitioned cookies (Python **3.14+** only). Keep `false` on Render’s Python 3.11 image or login/register returns 500. |
 | `POSTGRES_*` | see `.env.example` | Individual DB fields used to build `DATABASE_URL`. |
 | `DATABASE_URL` | — | If set, overrides composed Postgres URL (e.g. managed Postgres). |
 

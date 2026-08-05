@@ -1,3 +1,4 @@
+import sys
 from datetime import datetime, timedelta, timezone
 from typing import Literal, cast
 from fastapi import Response
@@ -16,6 +17,8 @@ def _cookie_secure() -> bool:
     return settings.cookie_secure or _same_site() == 'none'
 
 def _cookie_partitioned() -> bool:
+    if sys.version_info < (3, 14):
+        return False
     if _same_site() != 'none':
         return False
     return settings.cookie_partitioned
@@ -35,7 +38,15 @@ def set_session_cookie(response: Response, token: str) -> None:
     )
     if _cookie_partitioned():
         kwargs['partitioned'] = True
-    response.set_cookie(**kwargs)
+    try:
+        response.set_cookie(**kwargs)
+    except (ValueError, TypeError):
+        kwargs.pop('partitioned', None)
+        try:
+            response.set_cookie(**kwargs)
+        except (ValueError, TypeError):
+            pass
+
 
 def clear_session_cookie(response: Response) -> None:
     response.delete_cookie(

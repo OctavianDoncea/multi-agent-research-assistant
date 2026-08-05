@@ -14,6 +14,6 @@ services:
       - key: COOKIE_SAMESITE
         value: none
       - key: COOKIE_PARTITIONED
-        value: "true"
+        value: "false"
       - key: CORS_ORIGINS
         sync: false
