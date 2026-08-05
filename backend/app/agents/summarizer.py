@@ -17,7 +17,10 @@ Output requirements:
 - If evidence is insufficient, explicitly say so.
 
 Writing:
-- Use headings and bullet points where helpful.
+- Start with a single top-level title using `# Title`.
+- Use `## Section` (and `###` if needed) for section headings.
+- Prefer ATX headings (`#`, `##`). Never use Setext underlines, lines of `===` / `---`, or horizontal rules.
+- Use bullet points where helpful.
 - Be concise but complete.
 """
 

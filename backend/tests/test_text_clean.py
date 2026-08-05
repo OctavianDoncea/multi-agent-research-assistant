@@ -10,3 +10,36 @@ def test_clean_markdown_preserves_structure():
 def test_clean_markdown_normalizes_newlines_and_blank_runs():
     raw = '## Title\r\n\r\n\r\nPara\r\n'
     assert clean_markdown(raw) == '## Title\n\nPara'
+
+def test_clean_markdown_converts_setext_and_strips_rules():
+    raw = (
+        'Main Risks\n'
+        '==========\n'
+        '\n'
+        'Intro.\n'
+        '\n'
+        'Section One\n'
+        '-----------\n'
+        '\n'
+        'Body.\n'
+        '\n'
+        '---\n'
+        '\n'
+        '## Already ATX\n'
+        '====\n'
+        '\n'
+        'More.\n'
+    )
+    assert clean_markdown(raw) == (
+        '# Main Risks\n'
+        '\n'
+        'Intro.\n'
+        '\n'
+        '## Section One\n'
+        '\n'
+        'Body.\n'
+        '\n'
+        '## Already ATX\n'
+        '\n'
+        'More.'
+    )

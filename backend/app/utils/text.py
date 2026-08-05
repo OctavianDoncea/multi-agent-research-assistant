@@ -8,10 +8,20 @@ def clean_text(s: str) -> str:
     s = _ws_re.sub(' ', s).strip()
     return s
 
+_setext_h1_re = re.compile(r'^(?!#)([^\n]+)\n={3,}[ \t]*$', re.MULTILINE)
+_setext_h2_re = re.compile(r'^(?!#)([^\n]+)\n-{3,}[ \t]*$', re.MULTILINE)
+_underline_only_re = re.compile(r'^[ \t]*={3,}[ \t]*$', re.MULTILINE)
+_thematic_break_re = re.compile(r'^[ \t]*([-*_])\1{2,}[ \t]*$', re.MULTILINE)
+
 def clean_markdown(s: str) -> str:
     """Sanitize markdown without collapsing newlines (needed for headings/lists)."""
     s = s.replace('\x00', '')
     s = s.replace('\r\n', '\n').replace('\r', '\n')
+    # Prefer ATX headings; drop decorative underlines / rules LLMs often emit.
+    s = _setext_h1_re.sub(r'# \1', s)
+    s = _setext_h2_re.sub(r'## \1', s)
+    s = _underline_only_re.sub('', s)
+    s = _thematic_break_re.sub('', s)
     s = _blank_lines_re.sub('\n\n', s)
     return s.strip()
 
